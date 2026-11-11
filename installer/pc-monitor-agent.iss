@@ -40,7 +40,7 @@
 AppId={{F9FF55E1-801A-4E78-96FA-550A8B46C103}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Aditya Prasad, Tirth Patel
+AppPublisher=Aditya Prasad, Tirth Patel, Pratham Vasava
 AppPublisherURL=https://github.com/theallmyti/Monitoring-System
 DefaultDirName={autopf}\Nexus
 DefaultGroupName=Nexus

@@ -90,3 +90,116 @@ export const me = query({
     return found ? { email: found.user.email } : null;
   },
 });
+
+// GDPR Art. 17: Right to Erasure / Account Deletion.
+// Cascades across all devices, sessions, latest readings, and summaries owned by this user.
+export const deleteAccount = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const found = await sessionUser(ctx, args.token);
+    if (!found) {
+      throw new ConvexError("Not authenticated.");
+    }
+    const userId = found.user._id;
+
+    // 1. Delete all sessions for this user
+    const userSessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const s of userSessions) {
+      await ctx.db.delete(s._id);
+    }
+
+    // 2. Delete all devices and their associated telemetry data
+    const userDevices = await ctx.db
+      .query("devices")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    for (const d of userDevices) {
+      // Delete latest records for this device
+      const latestRows = await ctx.db
+        .query("latest")
+        .withIndex("by_device", (q) => q.eq("deviceId", d._id))
+        .collect();
+      for (const l of latestRows) {
+        await ctx.db.delete(l._id);
+      }
+
+      // Delete summaries for this device
+      const summaryRows = await ctx.db
+        .query("summaries")
+        .withIndex("by_device_time", (q) => q.eq("deviceId", d._id))
+        .collect();
+      for (const sm of summaryRows) {
+        await ctx.db.delete(sm._id);
+      }
+
+      // Delete pairing requests for this device
+      const pairingRows = await ctx.db
+        .query("pairingRequests")
+        .withIndex("by_secretHash", (q) => q.eq("secretHash", d.secretHash))
+        .collect();
+      for (const pr of pairingRows) {
+        await ctx.db.delete(pr._id);
+      }
+
+      // Delete the device row
+      await ctx.db.delete(d._id);
+    }
+
+    // 3. Delete the user
+    await ctx.db.delete(userId);
+    return { success: true };
+  },
+});
+
+// GDPR Art. 20: Right to Data Portability.
+// Exports all user profile information, registered devices, and historical telemetry as machine-readable JSON.
+export const exportData = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const found = await sessionUser(ctx, args.token);
+    if (!found) {
+      throw new ConvexError("Not authenticated.");
+    }
+    const userId = found.user._id;
+
+    const userDevices = await ctx.db
+      .query("devices")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    const devicesData = [];
+    for (const d of userDevices) {
+      const latest = await ctx.db
+        .query("latest")
+        .withIndex("by_device", (q) => q.eq("deviceId", d._id))
+        .first();
+
+      const summaries = await ctx.db
+        .query("summaries")
+        .withIndex("by_device_time", (q) => q.eq("deviceId", d._id))
+        .order("desc")
+        .take(100);
+
+      devicesData.push({
+        name: d.name,
+        capabilities: d.capabilities,
+        lastSeenAt: d.lastSeenAt,
+        latest,
+        recentSummaries: summaries,
+      });
+    }
+
+    return {
+      user: {
+        email: found.user.email,
+        createdAt: found.user.createdAt,
+      },
+      exportDate: Date.now(),
+      devices: devicesData,
+    };
+  },
+});

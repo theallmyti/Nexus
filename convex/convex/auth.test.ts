@@ -82,3 +82,24 @@ test("sign up and sign in reject excessive length email and password to prevent 
   await expect(t.action(api.auth.signUp, { email: hugeEmail, password: PASSWORD })).rejects.toThrow(/valid email/);
   await expect(t.action(api.auth.signIn, { email: EMAIL, password: hugePassword })).rejects.toThrow(/Wrong email or password/);
 });
+
+test("exportData returns user profile and paired devices for portability (GDPR Art. 20)", async () => {
+  const t = convexTest(schema, modules);
+  const { token } = await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  const exported = await t.query(api.auth.exportData, { token });
+  expect(exported.user.email).toBe(EMAIL);
+  expect(Array.isArray(exported.devices)).toBe(true);
+});
+
+test("deleteAccount cascades deletion of user, sessions, and devices (GDPR Art. 17)", async () => {
+  const t = convexTest(schema, modules);
+  const { token } = await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  expect(await t.query(api.auth.me, { token })).toEqual({ email: EMAIL });
+
+  await t.mutation(api.auth.deleteAccount, { token });
+  expect(await t.query(api.auth.me, { token })).toBeNull();
+  const users = await t.run((ctx) => ctx.db.query("users").collect());
+  expect(users.length).toBe(0);
+  const sessions = await t.run((ctx) => ctx.db.query("sessions").collect());
+  expect(sessions.length).toBe(0);
+});
