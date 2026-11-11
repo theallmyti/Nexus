@@ -1,4 +1,4 @@
-# Backs up the PC Monitor Convex database (every table) to backups\convex-<target>-<date>.zip.
+# Backs up the Nexus Convex database (every table) to backups\convex-<target>-<date>.zip.
 #
 #   powershell -File scripts\backup-convex.ps1          # prod (needs `npx convex login`)
 #   powershell -File scripts\backup-convex.ps1 -Dev     # dev deployment

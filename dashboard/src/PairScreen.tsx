@@ -7,13 +7,14 @@ import jsQR from "jsqr";
 // Pair a computer by scanning the QR code its installer shows (docs/Flow.md §3), or typing the code.
 // The signed-in user who confirms becomes the owner.
 
-const QR_PREFIX = "PCMONITOR-PAIR:";
+const QR_PREFIX = "NEXUS-PAIR:";
+const LEGACY_QR_PREFIX = "PCMONITOR-PAIR:";
 const CODE_PATTERN = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;
 
 type PairingInfo = { name: string; os: string; state: "pending" | "confirmed" | "expired" };
 
 function normalize(input: string) {
-  return input.replace(QR_PREFIX, "").replace(/[\s-]/g, "").toUpperCase();
+  return input.replace(QR_PREFIX, "").replace(LEGACY_QR_PREFIX, "").replace(/[\s-]/g, "").toUpperCase();
 }
 
 export function PairScreen({ token, initialCode, onDone }: { token: string; initialCode?: string; onDone: () => void }) {
@@ -68,7 +69,7 @@ export function PairScreen({ token, initialCode, onDone }: { token: string; init
           {info && info.state === "pending" && (
             <>
               <p>
-                Pair <b>{info.name}</b> ({osName}) with your PC Monitor?
+                Pair <b>{info.name}</b> ({osName}) with your Nexus?
               </p>
               <p className="muted small">Only confirm a computer you own. Code {code}.</p>
             </>
@@ -116,7 +117,7 @@ export function PairScreen({ token, initialCode, onDone }: { token: string; init
       <div className="login">
         <h1>Pair device</h1>
         <p className="muted">Point the camera at the QR code shown on the computer.</p>
-        <Scanner accept={(t) => t.startsWith(QR_PREFIX)} onCode={(c) => setCode(normalize(c))} />
+        <Scanner accept={(t) => t.startsWith(QR_PREFIX) || t.startsWith(LEGACY_QR_PREFIX)} onCode={(c) => setCode(normalize(c))} />
         <form
           className="code-form"
           onSubmit={(e) => {

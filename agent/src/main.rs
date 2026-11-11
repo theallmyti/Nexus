@@ -1,4 +1,4 @@
-//! PC Monitor agent: samples every second, sends a summary every 60 s, and sends live
+//! Nexus agent: samples every second, sends a summary every 60 s, and sends live
 //! data only while someone is watching (docs/Architecture.md §2.2, FR-30, FR-31).
 //! Convex client: https://docs.rs/convex/0.10.4 (clone shares the connection; the client
 //! reconnects by itself with backoff, so only the first connection is retried here).
@@ -386,7 +386,7 @@ fn main() {
             print_sensors();
             return;
         }
-        // Remove this device from PC Monitor (run by the uninstaller).
+        // Remove this device from Nexus (run by the uninstaller).
         Some("unpair") => {
             let path = PathBuf::from(
                 std::env::args()

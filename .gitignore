@@ -32,5 +32,4 @@ dist/
 # Convex database backups (personal data)
 backups/
 
-# Claude Code local permissions (per person)
-.claude/settings.local.json
+_nexus_ref/

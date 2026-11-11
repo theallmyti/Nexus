@@ -1,5 +1,5 @@
 #!/bin/sh
-# PC Monitor agent installer for Linux (x86-64 and ARM64, systemd).
+# Nexus agent installer for Linux (x86-64 and ARM64, systemd).
 #
 #   sudo sh install.sh [path/to/pc-monitor-agent]
 #
@@ -35,12 +35,12 @@ if [ -f "$cfg" ]; then
   sed -i "s|^convex_url *=.*|convex_url = \"$url\"|" "$cfg"
 else
   umask 077
-  printf '# PC Monitor agent config, written by install.sh.\nconvex_url = "%s"\nlive_interval_secs = 1\n' "$url" > "$cfg"
+  printf '# Nexus agent config, written by install.sh.\nconvex_url = "%s"\nlive_interval_secs = 1\n' "$url" > "$cfg"
 fi
 chmod 600 "$cfg"
 
 echo
-echo "Pair this computer: scan the QR code below with the PC Monitor site (Pair device),"
+echo "Pair this computer: scan the QR code below with the Nexus site (Pair device),"
 echo "or type the code. Press Ctrl+C to skip; the agent then waits until it is paired."
 echo
 /opt/pc-monitor/pc-monitor-agent pair "$cfg" || echo "Not paired yet. Pair later with: sudo /opt/pc-monitor/pc-monitor-agent pair $cfg"

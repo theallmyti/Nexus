@@ -22,7 +22,7 @@ use qrcode::render::unicode;
 use qrcode::{Color, QrCode};
 
 /// What the QR code contains. The site and app scanners read the code after the prefix.
-pub const QR_PREFIX: &str = "PCMONITOR-PAIR:";
+pub const QR_PREFIX: &str = "NEXUS-PAIR:";
 /// FR-12: codes expire after 10 minutes.
 const CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// QR image: pixels per module and the white margin (4 modules is the QR standard's quiet zone).
@@ -132,7 +132,7 @@ impl Ui {
                 println!("  Code: {}", spaced(code));
                 println!();
                 println!(
-                    "  On your phone: open PC Monitor, tap \"Pair device\", and scan this QR code"
+                    "  On your phone: open Nexus, tap \"Pair device\", and scan this QR code"
                 );
                 println!("  (or type the code). A new code appears if this one expires.");
                 println!();
@@ -178,7 +178,7 @@ async fn connect(url: &str, ui: &Ui) -> ConvexClient {
                     "error",
                     "",
                     0,
-                    "Cannot reach PC Monitor. Check the internet connection; retrying...",
+                    "Cannot reach Nexus. Check the internet connection; retrying...",
                 );
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(30));
@@ -194,7 +194,7 @@ pub async fn run(path: &Path, ui: Ui) {
         let _ = fs::remove_file(dir.join("cancel"));
         let _ = fs::remove_file(dir.join("qr.bmp"));
     }
-    ui.status("connecting", "", 0, "Connecting to PC Monitor...");
+    ui.status("connecting", "", 0, "Connecting to Nexus...");
     let mut config = match crate::config::Config::load(path) {
         Ok(c) => c,
         Err(e) => {
@@ -279,7 +279,7 @@ pub async fn run(path: &Path, ui: Ui) {
                 "paired",
                 &code,
                 0,
-                "Paired. PC Monitor will now start monitoring this computer.",
+                "Paired. Nexus will now start monitoring this computer.",
             );
             if matches!(ui, Ui::Terminal) {
                 tokio::time::sleep(Duration::from_secs(3)).await;
@@ -296,7 +296,7 @@ pub async fn run(path: &Path, ui: Ui) {
 }
 
 /// `pc-monitor-agent unpair [config]`, run by the uninstaller: removes this device and its
-/// history from PC Monitor. Always exits 0 so an offline computer can still be uninstalled.
+/// history from Nexus. Always exits 0 so an offline computer can still be uninstalled.
 pub async fn unpair(path: &Path) {
     let Ok(config) = crate::config::Config::load(path) else {
         println!("No config found; nothing to remove online.");
@@ -317,10 +317,10 @@ pub async fn unpair(path: &Path) {
     };
     match tokio::time::timeout(Duration::from_secs(20), removed).await {
         Ok(Some(FunctionResult::Value(Value::Boolean(true)))) => {
-            println!("Removed this computer from PC Monitor.")
+            println!("Removed this computer from Nexus.")
         }
         Ok(Some(FunctionResult::Value(_))) => println!("This computer was already removed."),
-        _ => println!("Could not reach PC Monitor; remove this computer from the dashboard later."),
+        _ => println!("Could not reach Nexus; remove this computer from the dashboard later."),
     }
 }
 

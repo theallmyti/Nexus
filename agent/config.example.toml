@@ -1,4 +1,4 @@
-﻿# PC Monitor agent config.
+﻿# Nexus agent config.
 # Copy to config.toml (gitignored). The device secret is generated on first run.
 
 # Convex deployment URL. Ask the project owner; it is kept out of the repo.

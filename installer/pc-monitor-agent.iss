@@ -1,4 +1,4 @@
-; PC Monitor agent installer (Inno Setup 6).
+; Nexus agent installer (Inno Setup 6).
 ; Build: see installer/README.md. Output: dist\pc-monitor-agent-setup-<version>.exe
 ;
 ; Install (docs/Architecture.md §2.3a):
@@ -10,10 +10,10 @@
 ;   (docs/Flow.md §3). A new code appears automatically when one expires.
 ; - Creates the "PCMonitorAgent" Windows service (restarted after a crash, NFR-06) and starts it
 ;   once pairing is done or skipped
-; Uninstall: stops and deletes the service, removes the device and its history from PC Monitor,
+; Uninstall: stops and deletes the service, removes the device and its history from Nexus,
 ; removes PawnIO (silently if this installer added it, otherwise after asking), deletes all files.
 
-#define AppName "PC Monitor Agent"
+#define AppName "Nexus Agent"
 #define AppVersion "0.2.1"
 #define ServiceName "PCMonitorAgent"
 ; The Convex URL is kept out of the repo: installer/convex-url.txt (git-ignored, one line).
@@ -34,7 +34,7 @@
 #if Pos(".convex.cloud", ConvexUrl) == 0
   #error installer/convex-url.txt must hold a Convex URL like https://<deployment>.convex.cloud
 #endif
-#define StateKey "SOFTWARE\PC Monitor"
+#define StateKey "SOFTWARE\Nexus"
 
 [Setup]
 AppId={{F9FF55E1-801A-4E78-96FA-550A8B46C103}
@@ -42,8 +42,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Aditya Prasad, Tirth Patel
 AppPublisherURL=https://github.com/theallmyti/Monitoring-System
-DefaultDirName={autopf}\PC Monitor
-DefaultGroupName=PC Monitor
+DefaultDirName={autopf}\Nexus
+DefaultGroupName=Nexus
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -73,7 +73,7 @@ Source: "vendor\pawnio\COPYING"; DestDir: "{app}\pawnio"; DestName: "COPYING-Paw
 Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flags: deleteafterinstall
 
 [Icons]
-Name: "{group}\Uninstall PC Monitor Agent"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
@@ -150,7 +150,7 @@ begin
   if not ConfigExists() then
   begin
     SaveStringToFile(DataDir() + '\config.toml',
-      '# PC Monitor agent config, written by the installer.' + #13#10 +
+      '# Nexus agent config, written by the installer.' + #13#10 +
       'convex_url = "{#ConvexUrl}"' + #13#10 +
       'live_interval_secs = 1' + #13#10, False);
     Exit;
@@ -184,7 +184,7 @@ begin
   if not ServiceExists() then
   begin
     Sc('create {#ServiceName} binPath= "\"' + ExpandConstant('{app}') + '\pc-monitor-agent.exe\" service" start= delayed-auto DisplayName= "{#AppName}"');
-    Sc('description {#ServiceName} "Sends this computer''s hardware stats to PC Monitor."');
+    Sc('description {#ServiceName} "Sends this computer''s hardware stats to Nexus."');
     // Restart after a crash: 5 s, 5 s, then 60 s; reset the count after a day (NFR-06).
     Sc('failure {#ServiceName} reset= 86400 actions= restart/5000/restart/5000/restart/60000');
   end;
@@ -297,7 +297,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     Sc('stop {#ServiceName}');
-    // Remove this computer and its history from PC Monitor (needs the config, so before files go).
+    // Remove this computer and its history from Nexus (needs the config, so before files go).
     Exec(ExpandConstant('{app}\pc-monitor-agent.exe'), 'unpair "' + DataDir() + '\config.toml"',
       '', SW_HIDE, ewWaitUntilTerminated, Code);
     Log('unpair -> ' + IntToStr(Code));

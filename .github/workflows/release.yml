@@ -1,0 +1,80 @@
+# Release: push a tag like v0.2.2 and this builds the Windows installer and uninstaller,
+# writes SHA256SUMS, and publishes them as a GitHub Release (auto-update task 1).
+#
+# Needs the repository secret CONVEX_URL (the prod Convex URL; it is not in the repo):
+#   gh secret set CONVEX_URL < installer/convex-url.txt
+# The tag must match agent/Cargo.toml's version (checked below).
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # create the release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tag matches agent version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path agent/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match agent/Cargo.toml version $version" }
+          $iss = (Select-String -Path installer/pc-monitor-agent.iss -Pattern '#define AppVersion "(.+)"').Matches[0].Groups[1].Value
+          if ($iss -ne $version) { throw "installer AppVersion $iss does not match $version" }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - name: Test and build agent
+        working-directory: agent
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: Convex URL from secret
+        shell: pwsh
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          if (-not $env:CONVEX_URL) { throw "Repository secret CONVEX_URL is not set" }
+          Set-Content -Path installer/convex-url.txt -Value $env:CONVEX_URL -NoNewline -Encoding ascii
+
+      - name: Fetch PawnIO (pinned, signature checked)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./installer/fetch-pawnio.ps1
+
+      - name: Build installers
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc /Q installer/pc-monitor-agent.iss
+          if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+          & $iscc /Q installer/pc-monitor-agent-uninstall.iss
+          if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
+          Remove-Item installer/convex-url.txt
+
+      - name: SHA256SUMS
+        shell: pwsh
+        working-directory: dist
+        run: |
+          Get-ChildItem *.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+            Set-Content SHA256SUMS -Encoding ascii
+          Get-Content SHA256SUMS
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.exe dist/SHA256SUMS `
+            --title "Nexus agent ${{ github.ref_name }}" `
+            --notes "Windows installer and uninstaller. Check downloads against SHA256SUMS. Not code-signed: SmartScreen shows 'More info -> Run anyway'."

@@ -1,13 +1,13 @@
 ; Standalone uninstaller: dist\pc-monitor-agent-uninstall.exe (Inno Setup 6).
-; Removes PC Monitor Agent from any installed version:
-; 1. removes this computer and its history from PC Monitor (bundled agent: `unpair`)
+; Removes Nexus Agent from any installed version:
+; 1. removes this computer and its history from Nexus (bundled agent: `unpair`)
 ; 2. runs the installed uninstaller silently and waits until it has finished
 ; 3. removes the PawnIO driver if it is still present, after asking (other apps may use it)
 
 #define AppId "{F9FF55E1-801A-4E78-96FA-550A8B46C103}"
 
 [Setup]
-AppName=PC Monitor Agent Uninstaller
+AppName=Nexus Agent Uninstaller
 AppVersion=0.1.0
 CreateAppDir=no
 Uninstallable=no
@@ -72,8 +72,8 @@ begin
 
   if Installed then
   begin
-    if MsgBox('Remove PC Monitor Agent from this computer?' + #13#10 + #13#10 +
-       'This stops monitoring, removes this computer and its history from the PC Monitor ' +
+    if MsgBox('Remove Nexus Agent from this computer?' + #13#10 + #13#10 +
+       'This stops monitoring, removes this computer and its history from the Nexus ' +
        'dashboard, and deletes the program and its settings.', mbConfirmation, MB_YESNO) <> IDYES then
       Exit;
 
@@ -96,13 +96,13 @@ begin
         RunCommandLine(Quiet);
   end
   else if not Installed then
-    MsgBox('PC Monitor Agent is not installed on this computer.', mbInformation, MB_OK);
+    MsgBox('Nexus Agent is not installed on this computer.', mbInformation, MB_OK);
 
   if not Installed then
     Exit;
   if RegKeyExists(HKLM, UninstKey) then
-    MsgBox('PC Monitor Agent could not be removed completely. Try again, or remove it from ' +
+    MsgBox('Nexus Agent could not be removed completely. Try again, or remove it from ' +
       'Settings > Apps.', mbError, MB_OK)
   else
-    MsgBox('PC Monitor Agent has been removed.', mbInformation, MB_OK);
+    MsgBox('Nexus Agent has been removed.', mbInformation, MB_OK);
 end;

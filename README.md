@@ -1,4 +1,4 @@
-# Monitoring-System (PC Monitor)
+# Nexus
 
 A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend, and a web **dashboard** shows every device live. An Android app with push alerts is planned.
 
@@ -23,7 +23,7 @@ A lightweight hardware monitor for a small fleet of personal machines: Windows l
 
 ## Why it exists
 
-Checking temperatures, load or battery means sitting at each machine. When a machine overheats or goes offline while nobody is at home, nobody knows. PC Monitor puts every machine on one screen and, once alerts land, tells you when something goes wrong.
+Checking temperatures, load or battery means sitting at each machine. When a machine overheats or goes offline while nobody is at home, nobody knows. Nexus puts every machine on one screen and, once alerts land, tells you when something goes wrong.
 
 Design goals:
 

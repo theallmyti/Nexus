@@ -28,7 +28,7 @@ export const hello = mutation({
   handler: async (ctx, args) => {
     if (isUnsupported(args.agentVersion)) {
       throw new ConvexError(
-        `This agent (${args.agentVersion}) is too old. Install version ${LATEST_AGENT_VERSION} from PC Monitor's releases.`,
+        `This agent (${args.agentVersion}) is too old. Install version ${LATEST_AGENT_VERSION} from Nexus's releases.`,
       );
     }
     const device = await deviceBySecretHash(ctx, args.secretHash);

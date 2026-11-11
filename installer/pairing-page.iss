@@ -51,7 +51,7 @@ begin
   TimerLabel.Caption := '';
   HintLabel.Caption := 'Monitoring starts when you click Next.';
   StatusLabel.Font.Color := clGreen;
-  StatusLabel.Caption := 'Paired. This computer is now linked to PC Monitor.';
+  StatusLabel.Caption := 'Paired. This computer is now linked to Nexus.';
   WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
 end;
 
@@ -89,7 +89,7 @@ end;
 procedure CreatePairingPage(AfterID: Integer);
 begin
   PairPage := CreateCustomPage(AfterID, 'Pair this computer',
-    'Link this computer to your PC Monitor by scanning the QR code with your phone.');
+    'Link this computer to your Nexus by scanning the QR code with your phone.');
 
   QRImage := TBitmapImage.Create(PairPage);
   QRImage.Parent := PairPage.Surface;
@@ -117,7 +117,7 @@ begin
   HintLabel.AutoSize := False;
   HintLabel.Height := ScaleY(60);
   HintLabel.WordWrap := True;
-  HintLabel.Caption := 'On your phone, open PC Monitor, tap "Pair device" and scan this QR code, ' +
+  HintLabel.Caption := 'On your phone, open Nexus, tap "Pair device" and scan this QR code, ' +
     'or type the code.';
 
   TimerLabel := TNewStaticText.Create(PairPage);

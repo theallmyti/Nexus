@@ -100,7 +100,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (token: string) => void }) {
           }
         }}
       >
-        <h1>PC Monitor</h1>
+        <h1>Nexus</h1>
         <p className="muted">{creating ? "Create an account to see your computers." : "Sign in to see your computers."}</p>
         <label>
           Email
@@ -227,7 +227,7 @@ function Dashboard({ token, email, onSignOut }: { token: string; email: string; 
       <header className="topbar">
         <div className="topbar-inner">
         <div>
-          <h1>PC Monitor</h1>
+          <h1>Nexus</h1>
           <p className="italic">Every machine you own, at a glance.</p>
         </div>
         <div className="topbar-actions">

@@ -3,7 +3,7 @@
 Builds `dist\pc-monitor-agent-setup-<version>.exe`, a normal Windows setup program.
 
 ## What it does
-- Asks for admin (UAC), installs to `C:\Program Files\PC Monitor`.
+- Asks for admin (UAC), installs to `C:\Program Files\Nexus`.
 - Writes `C:\ProgramData\PCMonitor\config.toml`, readable only by SYSTEM and Administrators.
 - **Pairing:** opens a window with a QR code and a 6-character code. Open the site on your
   phone, tap **Pair device**, scan the code (or type it), and confirm. The window closes and
@@ -19,16 +19,16 @@ Builds `dist\pc-monitor-agent-setup-<version>.exe`, a normal Windows setup progr
   is paired again on the pairing page.
 
 ## Install location
-Any local fixed drive works (for example `E:\PC Monitor`). The folder only holds the program;
+Any local fixed drive works (for example `E:\Nexus`). The folder only holds the program;
 config and logs always live in `C:\ProgramData\PCMonitor`. The drive must be present when Windows
 starts (not a USB or network drive), because the service starts at boot. Setup locks the folder
 to SYSTEM and Administrators, since the agent runs as LocalSystem.
 
 ## Uninstall
-Three ways, all doing the same: Start menu → PC Monitor → Uninstall PC Monitor Agent,
+Three ways, all doing the same: Start menu → Nexus → Uninstall Nexus Agent,
 Settings → Apps, or `dist\pc-monitor-agent-uninstall.exe` (works for any installed version).
 - Stops and deletes the service.
-- Removes this computer and its history from the PC Monitor dashboard (`pc-monitor-agent unpair`).
+- Removes this computer and its history from the Nexus dashboard (`pc-monitor-agent unpair`).
 - Removes the PawnIO driver: without asking if this setup installed it, otherwise after asking,
   because other apps (Fan Control, LibreHardwareMonitor) may use it.
 - Deletes the program folder and `C:\ProgramData\PCMonitor`.

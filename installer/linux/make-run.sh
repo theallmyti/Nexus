@@ -29,7 +29,7 @@ out="$root/dist/pc-monitor-agent-$version-linux-$arch.run"
 mkdir -p "$root/dist"
 cat > "$out" <<EOF
 #!/bin/sh
-# PC Monitor agent $version for Linux ($arch, systemd). Run: sudo sh $(basename "$out")
+# Nexus agent $version for Linux ($arch, systemd). Run: sudo sh $(basename "$out")
 set -eu
 case "\$(uname -m)" in
   $arch|$( [ "$arch" = aarch64 ] && echo arm64 || echo amd64 )) ;;

@@ -1,4 +1,4 @@
-# PC Monitor site
+# Nexus site
 
 Sign in, pair computers by scanning their QR code, and watch them live. Every Convex call
 carries the session token; the backend only returns the signed-in user's own devices.
