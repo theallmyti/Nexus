@@ -16,7 +16,8 @@ const SEARCH_DIRS = [
   'C:/Users/shilp/.gemini/config/skills',
   'C:/Users/shilp/.gemini/skills',
   'C:/Users/shilp/.gemini/config/plugins',
-  'C:/Users/shilp/.gemini/antigravity-cli/builtin/skills'
+  'C:/Users/shilp/.gemini/antigravity-cli/builtin/skills',
+  'C:/Users/shilp/.agents/skills'
 ];
 
 // Helper to escape markdown table pipes

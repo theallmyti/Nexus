@@ -1,5 +1,6 @@
 //! Local control and status IPC via JSON files in data_dir (%ProgramData%\PCMonitor).
 //! Bridges the background service (Session 0) and the user desktop tray (Session 1).
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 use std::fs;
