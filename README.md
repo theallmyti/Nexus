@@ -343,4 +343,4 @@ Still to come: email and password accounts, QR pairing, the Android app, thresho
 
 ## Licence
 
-MIT © 2026 Aditya Prasad, Tirth Patel. See [LICENSE](LICENSE).
+MIT © 2026 Aditya Prasad, Tirth Patel, Pratham Vasava. See [LICENSE](LICENSE).
