@@ -28,23 +28,24 @@ export const overview = query({
       .query("devices")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
-    const out = [];
-    for (const d of devices) {
-      const latest = await ctx.db
-        .query("latest")
-        .withIndex("by_device", (q) => q.eq("deviceId", d._id))
-        .unique();
-      out.push({
-        id: d._id,
-        name: d.name,
-        lastSeenAt: d.lastSeenAt,
-        online: now - d.lastSeenAt < OFFLINE_AFTER_MS,
-        agentVersion: d.agentVersion ?? null,
-        capabilities: d.capabilities ?? null,
-        updateAvailable: isOutdated(d.agentVersion),
-        latest: latest ?? null,
-      });
-    }
+    const latestList = await Promise.all(
+      devices.map((d) =>
+        ctx.db
+          .query("latest")
+          .withIndex("by_device", (q) => q.eq("deviceId", d._id))
+          .unique(),
+      ),
+    );
+    const out = devices.map((d, i) => ({
+      id: d._id,
+      name: d.name,
+      lastSeenAt: d.lastSeenAt,
+      online: now - d.lastSeenAt < OFFLINE_AFTER_MS,
+      agentVersion: d.agentVersion ?? null,
+      capabilities: d.capabilities ?? null,
+      updateAvailable: isOutdated(d.agentVersion),
+      latest: latestList[i] ?? null,
+    }));
     return { now, latestAgentVersion: LATEST_AGENT_VERSION, devices: out };
   },
 });

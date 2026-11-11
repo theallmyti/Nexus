@@ -41,12 +41,14 @@ export const start = mutation({
     while (await pairingByCode(ctx, code)) {
       code = newCode();
     }
+    const sanitizedName = args.name.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 64) || "unknown";
+    const sanitizedOs = args.os.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 16) || "unknown";
     const expiresAt = Date.now() + PAIRING_EXPIRES_MS;
     await ctx.db.insert("pairingRequests", {
       code,
       secretHash: args.secretHash,
-      name: args.name.slice(0, 64),
-      os: args.os.slice(0, 16),
+      name: sanitizedName,
+      os: sanitizedOs,
       status: "pending",
       expiresAt,
     });
