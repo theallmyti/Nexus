@@ -108,14 +108,14 @@ mod tests {
         let temp = std::env::temp_dir().join(format!("nexus_test_{}", now_secs()));
         let _ = fs::create_dir_all(&temp);
 
-        // Pause for 1 second
-        set_pause(&temp, Some(1), "test");
+        // Pause for 2 seconds to avoid subsecond boundary rollover
+        set_pause(&temp, Some(2), "test");
         let s = read_control(&temp);
         assert!(s.paused);
         assert!(s.until.is_some());
 
-        // Wait 1.1s for expiration
-        std::thread::sleep(std::time::Duration::from_millis(1100));
+        // Wait 2.1s for expiration
+        std::thread::sleep(std::time::Duration::from_millis(2100));
         let s2 = read_control(&temp);
         assert!(!s2.paused);
 

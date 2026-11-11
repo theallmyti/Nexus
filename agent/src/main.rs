@@ -401,6 +401,9 @@ fn print_help() {
     println!();
     println!("Commands:");
     println!("  status         Show current agent service status and live metrics");
+    println!("  pause [MINS]   Pause metrics collection (default: 24h, or specify minutes)");
+    println!("  resume         Resume paused metrics collection");
+    println!("  restart        Restart the background agent service (Windows)");
     println!("  pair           Pair this machine with your Nexus dashboard account");
     println!("  unpair         Remove device secret and unlink from Nexus");
     println!("  sensors        List all detected hardware sensors (temperatures, clocks)");
@@ -437,8 +440,10 @@ fn print_status() {
 
     let dir = if data_dir.join("status.json").exists() {
         data_dir
-    } else {
+    } else if PathBuf::from("status.json").exists() {
         PathBuf::from(".")
+    } else {
+        data_dir
     };
 
     match control::read_status(&dir) {
@@ -490,6 +495,53 @@ fn main() {
         }
         Some("status") => {
             print_status();
+            return;
+        }
+        Some("pause") => {
+            #[cfg(windows)]
+            let data_dir = service::data_dir();
+            #[cfg(not(windows))]
+            let data_dir = PathBuf::from("/var/lib/nexus");
+            let mins: Option<u64> = std::env::args().nth(2).and_then(|m| m.parse().ok());
+            let duration_secs = mins.map(|m| m.saturating_mul(60));
+            control::set_pause(&data_dir, duration_secs, "cli");
+            match mins {
+                Some(m) => println!(
+                    "Nexus monitoring paused for {m} minutes. Run `nexus resume` to resume."
+                ),
+                None => {
+                    println!("Nexus monitoring paused for 24 hours. Run `nexus resume` to resume.")
+                }
+            }
+            return;
+        }
+        Some("resume") => {
+            #[cfg(windows)]
+            let data_dir = service::data_dir();
+            #[cfg(not(windows))]
+            let data_dir = PathBuf::from("/var/lib/nexus");
+            control::clear_pause(&data_dir);
+            println!("Nexus monitoring resumed.");
+            return;
+        }
+        #[cfg(windows)]
+        Some("restart") => {
+            println!("Restarting NexusAgent Windows service...");
+            let status = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
+                ])
+                .status();
+            match status {
+                Ok(s) if s.success() => println!("Restart command issued successfully."),
+                _ => println!(
+                    "Failed to trigger service restart. Ensure you have administrator permissions."
+                ),
+            }
             return;
         }
         Some("help") | Some("--help") | Some("-h") => {

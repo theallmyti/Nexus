@@ -61,6 +61,8 @@ CloseApplications=no
 
 [Tasks]
 Name: "cputemp"; Description: "Show CPU temperature (installs the PawnIO driver; the agent then runs with admin rights)"
+Name: "tray"; Description: "Start Nexus in System Tray on login (uncheck to save ~15 MB RAM; control via terminal 'nexus' commands)"; Flags: checkedonce
+Name: "addtopath"; Description: "Add Nexus to system PATH (allows running 'nexus' directly in Command Prompt or PowerShell)"; Flags: checkedonce
 
 [Files]
 Source: "..\agent\target\release\nexus.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -74,10 +76,14 @@ Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flag
 
 [Icons]
 Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
-Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\nexus.exe"; Parameters: "tray"
+Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\nexus.exe"; Parameters: "tray"; Tasks: tray
 
 [Run]
-Filename: "{app}\nexus.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden
+Filename: "{app}\nexus.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden; Tasks: tray
+
+[Registry]
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\nexus.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\nexus.exe"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\nexus.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
@@ -123,6 +129,45 @@ var
 begin
   Exec(ExpandConstant('{sys}\sc.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, Code);
   Log('sc.exe ' + Params + ' -> ' + IntToStr(Code));
+end;
+
+procedure AddToPath(Dir: String);
+var
+  OldPath, AppDir: String;
+begin
+  AppDir := RemoveQuotes(Dir);
+  if RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', OldPath) then
+  begin
+    if Pos(';' + Uppercase(AppDir) + ';', ';' + Uppercase(OldPath) + ';') = 0 then
+    begin
+      if (Length(OldPath) > 0) and (OldPath[Length(OldPath)] <> ';') then
+        OldPath := OldPath + ';';
+      RegWriteStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', OldPath + AppDir);
+    end;
+  end;
+end;
+
+procedure RemoveFromPath(Dir: String);
+var
+  OldPath, AppDir, Pattern: String;
+  P: Integer;
+begin
+  AppDir := RemoveQuotes(Dir);
+  if RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', OldPath) then
+  begin
+    Pattern := ';' + Uppercase(AppDir) + ';';
+    P := Pos(Pattern, ';' + Uppercase(OldPath) + ';');
+    if P > 0 then
+    begin
+      OldPath := ';' + OldPath + ';';
+      StringChangeEx(OldPath, ';' + AppDir + ';', ';', True);
+      if Length(OldPath) >= 2 then
+        OldPath := Copy(OldPath, 2, Length(OldPath) - 2)
+      else
+        OldPath := '';
+      RegWriteStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', OldPath);
+    end;
+  end;
 end;
 
 // Only SYSTEM and Administrators may change these folders: the agent runs as LocalSystem, so a
@@ -228,6 +273,8 @@ begin
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\status.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
+    if WizardIsTaskSelected('addtopath') then
+      AddToPath(ExpandConstant('{app}'));
     // Silent installs skip the pairing page: start now; the agent waits until it is paired.
     if WizardSilent() then
       Sc('start {#ServiceName}');
@@ -339,6 +386,7 @@ begin
     Log('unpair -> ' + IntToStr(Code));
     Sc('delete {#ServiceName}');
     Exec(ExpandConstant('{sys}\sc.exe'), 'delete PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    RemoveFromPath(ExpandConstant('{app}'));
     RemovePawnIO();
     RegDeleteKeyIncludingSubkeys(HKLM, '{#StateKey}');
   end;
