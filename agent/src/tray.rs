@@ -441,17 +441,31 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
             let config_path = data_dir.join("config.toml");
             std::thread::spawn(move || {
-                let _ = std::process::Command::new("cmd")
-                    .args(["/c", "start", "Nexus Pairing", &exe_path.to_string_lossy(), "pair", &config_path.to_string_lossy()])
-                    .status();
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+                    let _ = std::process::Command::new(&exe_path)
+                        .args(["pair", &config_path.to_string_lossy()])
+                        .creation_flags(CREATE_NEW_CONSOLE)
+                        .spawn();
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = std::process::Command::new(&exe_path)
+                        .args(["pair", &config_path.to_string_lossy()])
+                        .spawn();
+                }
             });
         }
         ID_DASHBOARD => {
             let url = get_dashboard_url(&data_dir);
-            unsafe {
-                let wide_url = to_wide(&url);
-                let wide_open = to_wide("open");
-                ShellExecuteW(0, wide_open.as_ptr(), wide_url.as_ptr(), null(), null(), 1);
+            if is_safe_web_url(&url) {
+                unsafe {
+                    let wide_url = to_wide(&url);
+                    let wide_open = to_wide("open");
+                    ShellExecuteW(0, wide_open.as_ptr(), wide_url.as_ptr(), null(), null(), 1);
+                }
             }
         }
         ID_OPEN_LOGS => {
@@ -464,8 +478,15 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
         }
         ID_RESTART_SERVICE => {
             std::thread::spawn(|| {
+                // Elevate via UAC runas verb so the service restart doesn't silently fail from a standard user session
                 let _ = std::process::Command::new("powershell")
-                    .args(["-NoProfile", "-Command", "Restart-Service PCMonitorAgent -ErrorAction SilentlyContinue"])
+                    .args([
+                        "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent'",
+                    ])
                     .status();
             });
         }
@@ -501,23 +522,43 @@ fn prompt_custom_pause(data_dir: &Path) {
     }
 }
 
-fn get_dashboard_url(data_dir: &Path) -> String {
-    if let Some(status) = control::read_status(data_dir)
-        && let Some(url) = status.convex_url
-    {
-        return url;
+/// Validate web URL before ShellExecuteW to prevent command execution, file protocol hijacking, or LPE.
+pub fn is_safe_web_url(url: &str) -> bool {
+    let lower = url.trim().to_lowercase();
+    if !lower.starts_with("https://") && !lower.starts_with("http://") {
+        return false;
     }
-    // Fallback: read config.toml
+    // Disallow whitespace, quotes, or dangerous control characters
+    if lower.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>') {
+        return false;
+    }
+    true
+}
+
+fn get_dashboard_url(data_dir: &Path) -> String {
+    // 1. Prefer reading config.toml because it is admin-controlled
     let config_path = data_dir.join("config.toml");
     if let Ok(c) = std::fs::read_to_string(config_path) {
         for line in c.lines() {
             if line.trim().starts_with("convex_url")
                 && let Some(val) = line.split('=').nth(1)
             {
-                return val.trim().trim_matches('"').to_string();
+                let raw = val.trim().trim_matches('"').trim();
+                if is_safe_web_url(raw) {
+                    return raw.to_string();
+                }
             }
         }
     }
+
+    // 2. Fallback to status.json only if sanitized and validated
+    if let Some(status) = control::read_status(data_dir)
+        && let Some(url) = status.convex_url
+        && is_safe_web_url(&url)
+    {
+        return url;
+    }
+
     "https://github.com/theallmyti/Monitoring-System".to_string()
 }
 
@@ -531,5 +572,18 @@ mod tests {
         let h2 = create_tray_hicon(true);
         assert_ne!(h1, 0, "hicon_active must not be null");
         assert_ne!(h2, 0, "hicon_paused must not be null");
+    }
+
+    #[test]
+    fn test_is_safe_web_url() {
+        assert!(is_safe_web_url("https://tidy-newt-65.convex.cloud"));
+        assert!(is_safe_web_url("http://localhost:3000"));
+        assert!(is_safe_web_url("http://127.0.0.1:8000"));
+        // Dangerous schemes or commands blocked
+        assert!(!is_safe_web_url("file:///C:/Users/Public/evil.bat"));
+        assert!(!is_safe_web_url("cmd.exe /c calc.exe"));
+        assert!(!is_safe_web_url("powershell -enc AAAAA"));
+        assert!(!is_safe_web_url("javascript:alert(1)"));
+        assert!(!is_safe_web_url("https://example.com/\"evil"));
     }
 }
