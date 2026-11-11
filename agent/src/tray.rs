@@ -12,6 +12,7 @@ use std::sync::Mutex;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HBITMAP};
+use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, ShellExecuteW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
@@ -21,9 +22,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyIcon, DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, PostQuitMessage,
     RegisterClassExW, SetForegroundWindow, SetTimer, TrackPopupMenu, TranslateMessage,
-    HICON, ICONINFO, MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-    MF_STRING, MSG, TPM_RIGHTBUTTON, WM_COMMAND, WM_DESTROY, WM_RBUTTONUP,
-    WM_TIMER, WM_USER, WNDCLASSEXW,
+    HICON, ICONINFO, IDI_APPLICATION, LoadIconW, MF_DISABLED, MF_GRAYED, MF_POPUP,
+    MF_SEPARATOR, MF_STRING, MSG, TPM_RIGHTBUTTON, WM_COMMAND, WM_DESTROY, WM_RBUTTONUP,
+    WM_TIMER, WM_USER, WNDCLASSEXW, WS_POPUP,
 };
 
 use crate::control;
@@ -74,10 +75,8 @@ fn create_tray_hicon(is_paused: bool) -> HICON {
 
             if dist <= r {
                 if dist > r - 1.2 {
-                    // Dark border
-                    pixels[idx] = 0xFF101820;
+                    pixels[idx] = 0xFF101820; // Dark border
                 } else if is_paused {
-                    // Amber / Orange circle (#F59E0B) with pause bars
                     let is_bar1 = (x == 6 || x == 7) && (5..=10).contains(&y);
                     let is_bar2 = (x == 9 || x == 10) && (5..=10).contains(&y);
                     if is_bar1 || is_bar2 {
@@ -86,8 +85,7 @@ fn create_tray_hicon(is_paused: bool) -> HICON {
                         pixels[idx] = 0xFFF59E0B; // Amber background
                     }
                 } else {
-                    // Active: Emerald / Cyan circle (#10B981)
-                    pixels[idx] = 0xFF10B981;
+                    pixels[idx] = 0xFF10B981; // Emerald / Cyan circle
                 }
             } else {
                 pixels[idx] = 0x00000000; // Transparent
@@ -119,12 +117,16 @@ struct TrayState {
     data_dir: PathBuf,
     hicon_active: HICON,
     hicon_paused: HICON,
-    is_paused: bool,
 }
 
 static GLOBAL_STATE: Mutex<Option<TrayState>> = Mutex::new(None);
 
 pub fn run() {
+    // Immediately detach and close any terminal/console window so tray runs silently in background.
+    unsafe {
+        FreeConsole();
+    }
+
     let data_dir = crate::service::data_dir();
     let _ = std::fs::create_dir_all(&data_dir);
 
@@ -153,7 +155,7 @@ pub fn run() {
             0,
             class_name.as_ptr(),
             to_wide("Nexus Agent Tray").as_ptr(),
-            windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP,
+            WS_POPUP,
             0,
             0,
             0,
@@ -165,17 +167,16 @@ pub fn run() {
         );
 
         if hwnd == 0 {
-            crate::warn!("CreateWindowExW failed for tray: {:#x}", windows_sys::Win32::Foundation::GetLastError());
             return;
         }
 
         let mut hicon_active = create_tray_hicon(false);
         if hicon_active == 0 {
-            hicon_active = windows_sys::Win32::UI::WindowsAndMessaging::LoadIconW(0, windows_sys::Win32::UI::WindowsAndMessaging::IDI_APPLICATION);
+            hicon_active = LoadIconW(0, IDI_APPLICATION);
         }
         let mut hicon_paused = create_tray_hicon(true);
         if hicon_paused == 0 {
-            hicon_paused = windows_sys::Win32::UI::WindowsAndMessaging::LoadIconW(0, windows_sys::Win32::UI::WindowsAndMessaging::IDI_APPLICATION);
+            hicon_paused = LoadIconW(0, IDI_APPLICATION);
         }
 
         {
@@ -184,7 +185,6 @@ pub fn run() {
                 data_dir: data_dir.clone(),
                 hicon_active,
                 hicon_paused,
-                is_paused: false,
             });
         }
 
@@ -200,19 +200,11 @@ pub fn run() {
         let copy_len = initial_tip.len().min(nid.szTip.len() - 1);
         nid.szTip[..copy_len].copy_from_slice(&initial_tip[..copy_len]);
 
-        let mut added = false;
         for _ in 0..5 {
             if Shell_NotifyIconW(NIM_ADD, &nid) != 0 {
-                added = true;
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
-        }
-
-        if !added {
-            crate::warn!("Shell_NotifyIconW NIM_ADD failed: {:#x}", windows_sys::Win32::Foundation::GetLastError());
-        } else {
-            crate::say!("Nexus Agent tray running in notification area. Click '^' on your taskbar to view.");
         }
 
         SetTimer(hwnd, TRAY_TIMER_ID, 2000, None);
@@ -264,43 +256,51 @@ unsafe extern "system" fn wnd_proc(
 }
 
 fn update_tray(hwnd: HWND) {
-    let mut lock = GLOBAL_STATE.lock().unwrap();
-    let state = match lock.as_mut() {
-        Some(s) => s,
-        None => return,
-    };
+    let (hicon, tip_text) = {
+        let lock = GLOBAL_STATE.lock().unwrap();
+        let state = match lock.as_ref() {
+            Some(s) => s,
+            None => return,
+        };
 
-    let ctrl = control::read_control(&state.data_dir);
-    let status = control::read_status(&state.data_dir);
+        let ctrl = control::read_control(&state.data_dir);
+        let status = control::read_status(&state.data_dir);
 
-    state.is_paused = ctrl.paused;
-
-    let tip_text = if state.is_paused {
-        if let Some(until) = ctrl.until {
-            let now = control::now_secs();
-            let rem_min = if until > now { (until - now) / 60 + 1 } else { 0 };
-            format!("Nexus Agent: Paused\nLogging paused (resumes in ~{}m)", rem_min)
+        let icon = if ctrl.paused {
+            state.hicon_paused
         } else {
-            "Nexus Agent: Paused\nLogging paused indefinitely".to_string()
-        }
-    } else if let Some(s) = status {
-        if s.state == "unpaired" {
-            "Nexus Agent: Unpaired\nRight-click to pair or open dashboard".to_string()
-        } else if s.state == "connecting" {
-            "Nexus Agent: Connecting...".to_string()
+            state.hicon_active
+        };
+
+        let tip = if ctrl.paused {
+            if let Some(until) = ctrl.until {
+                let now = control::now_secs();
+                let rem_min = if until > now { (until - now) / 60 + 1 } else { 0 };
+                format!("Nexus Agent: Paused\nLogging paused (resumes in ~{}m)", rem_min)
+            } else {
+                "Nexus Agent: Paused\nLogging paused indefinitely".to_string()
+            }
+        } else if let Some(s) = status {
+            if s.state == "unpaired" {
+                "Nexus Agent: Unpaired\nRight-click to pair or open dashboard".to_string()
+            } else if s.state == "connecting" {
+                "Nexus Agent: Connecting...".to_string()
+            } else {
+                let temp_str = match s.temp_c {
+                    Some(t) => format!(" | {:.0}°C", t),
+                    None => String::new(),
+                };
+                format!(
+                    "Nexus Agent: Active\nCPU: {:.0}% | RAM: {:.0}%{}",
+                    s.cpu_util, s.ram_pct, temp_str
+                )
+            }
         } else {
-            let temp_str = match s.temp_c {
-                Some(t) => format!(" | {:.0}°C", t),
-                None => String::new(),
-            };
-            format!(
-                "Nexus Agent: Active\nCPU: {:.0}% | RAM: {:.0}%{}",
-                s.cpu_util, s.ram_pct, temp_str
-            )
-        }
-    } else {
-        "Nexus Agent: Active\nConnected".to_string()
-    };
+            "Nexus Agent: Active\nConnected".to_string()
+        };
+
+        (icon, tip)
+    }; // Mutex lock is explicitly dropped here before any Win32 calls
 
     unsafe {
         let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
@@ -308,11 +308,7 @@ fn update_tray(hwnd: HWND) {
         nid.hWnd = hwnd;
         nid.uID = TRAY_UID;
         nid.uFlags = NIF_ICON | NIF_TIP;
-        nid.hIcon = if state.is_paused {
-            state.hicon_paused
-        } else {
-            state.hicon_active
-        };
+        nid.hIcon = hicon;
 
         let wide_tip = to_wide(&tip_text);
         let copy_len = wide_tip.len().min(nid.szTip.len() - 1);
@@ -323,14 +319,16 @@ fn update_tray(hwnd: HWND) {
 }
 
 fn show_context_menu(hwnd: HWND) {
-    let lock = GLOBAL_STATE.lock().unwrap();
-    let state = match lock.as_ref() {
-        Some(s) => s,
-        None => return,
-    };
+    let data_dir = {
+        let lock = GLOBAL_STATE.lock().unwrap();
+        match lock.as_ref() {
+            Some(s) => s.data_dir.clone(),
+            None => return,
+        }
+    }; // Mutex lock is dropped here before opening the modal context menu!
 
-    let ctrl = control::read_control(&state.data_dir);
-    let status = control::read_status(&state.data_dir);
+    let ctrl = control::read_control(&data_dir);
+    let status = control::read_status(&data_dir);
     let is_paused = ctrl.paused;
     let is_unpaired = status.as_ref().is_some_and(|s| s.state == "unpaired");
 
@@ -393,62 +391,55 @@ fn show_context_menu(hwnd: HWND) {
 }
 
 fn handle_menu_command(hwnd: HWND, cmd: usize) {
-    let lock = GLOBAL_STATE.lock().unwrap();
-    let state = match lock.as_ref() {
-        Some(s) => s,
-        None => return,
-    };
+    let data_dir = {
+        let lock = GLOBAL_STATE.lock().unwrap();
+        match lock.as_ref() {
+            Some(s) => s.data_dir.clone(),
+            None => return,
+        }
+    }; // Mutex lock is dropped here!
 
     match cmd {
         ID_PAUSE_15M => {
-            control::set_pause(&state.data_dir, Some(15 * 60), "tray_15m");
-            drop(lock);
+            control::set_pause(&data_dir, Some(15 * 60), "tray_15m");
             update_tray(hwnd);
         }
         ID_PAUSE_30M => {
-            control::set_pause(&state.data_dir, Some(30 * 60), "tray_30m");
-            drop(lock);
+            control::set_pause(&data_dir, Some(30 * 60), "tray_30m");
             update_tray(hwnd);
         }
         ID_PAUSE_1H => {
-            control::set_pause(&state.data_dir, Some(60 * 60), "tray_1h");
-            drop(lock);
+            control::set_pause(&data_dir, Some(60 * 60), "tray_1h");
             update_tray(hwnd);
         }
         ID_PAUSE_2H => {
-            control::set_pause(&state.data_dir, Some(2 * 60 * 60), "tray_2h");
-            drop(lock);
+            control::set_pause(&data_dir, Some(2 * 60 * 60), "tray_2h");
             update_tray(hwnd);
         }
         ID_PAUSE_4H => {
-            control::set_pause(&state.data_dir, Some(4 * 60 * 60), "tray_4h");
-            drop(lock);
+            control::set_pause(&data_dir, Some(4 * 60 * 60), "tray_4h");
             update_tray(hwnd);
         }
         ID_PAUSE_8H => {
-            control::set_pause(&state.data_dir, Some(8 * 60 * 60), "tray_8h");
-            drop(lock);
+            control::set_pause(&data_dir, Some(8 * 60 * 60), "tray_8h");
             update_tray(hwnd);
         }
         ID_PAUSE_INDEF => {
-            control::set_pause(&state.data_dir, None, "tray_indefinite");
-            drop(lock);
+            control::set_pause(&data_dir, None, "tray_indefinite");
             update_tray(hwnd);
         }
         ID_PAUSE_CUSTOM => {
-            let data_dir = state.data_dir.clone();
             std::thread::spawn(move || {
                 prompt_custom_pause(&data_dir);
             });
         }
         ID_RESUME => {
-            control::clear_pause(&state.data_dir);
-            drop(lock);
+            control::clear_pause(&data_dir);
             update_tray(hwnd);
         }
         ID_PAIR => {
             let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
-            let config_path = state.data_dir.join("config.toml");
+            let config_path = data_dir.join("config.toml");
             std::thread::spawn(move || {
                 let _ = std::process::Command::new("cmd")
                     .args(["/c", "start", "Nexus Pairing", &exe_path.to_string_lossy(), "pair", &config_path.to_string_lossy()])
@@ -456,7 +447,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             });
         }
         ID_DASHBOARD => {
-            let url = get_dashboard_url(&state.data_dir);
+            let url = get_dashboard_url(&data_dir);
             unsafe {
                 let wide_url = to_wide(&url);
                 let wide_open = to_wide("open");
@@ -464,7 +455,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             }
         }
         ID_OPEN_LOGS => {
-            let log_path = state.data_dir.join("agent.log");
+            let log_path = data_dir.join("agent.log");
             unsafe {
                 let wide_path = to_wide(&log_path.to_string_lossy());
                 let wide_open = to_wide("open");

@@ -77,7 +77,7 @@ Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
 Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"
 
 [Run]
-Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
