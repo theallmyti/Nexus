@@ -32,4 +32,8 @@ dist/
 # Convex database backups (personal data)
 backups/
 
+# Local testing tools & private guides
+dashboard/
+ANDROID_INTEGRATION_GUIDE.md
+
 _nexus_ref/

@@ -33,32 +33,6 @@ jobs:
       - run: npx tsc --noEmit -p .
       - run: npx vitest run
 
-  dashboard:
-    name: Site (types + build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dashboard
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
-      - run: npm ci
-      # The session token lives in localStorage, so injected HTML would let a script steal it.
-      # React escapes text; only raw-HTML APIs bypass that (docs/Security.md).
-      - name: No raw HTML in the site
-        run: |
-          if grep -rnE "dangerouslySetInnerHTML|\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML|document\.write" src; then
-            echo "::error::Raw HTML found in dashboard/src. Render text with React instead."
-            exit 1
-          fi
-      - run: npm run build
-        env:
-          VITE_CONVEX_URL: https://ci-placeholder.convex.cloud
-
   agent:
     name: Agent (${{ matrix.os }})
     strategy:

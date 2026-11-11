@@ -1,6 +1,6 @@
 # Nexus
 
-A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend, and a web **dashboard** shows every device live. An Android app with push alerts is planned.
+A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend. An Android app with push alerts is in development.
 
 **Status:** Week 1 (spikes). MVP due 3 Dec 2026.
 
@@ -52,22 +52,19 @@ flowchart TB
     CR --> DB
   end
 
-  DASH["Web dashboard<br/>(React + Vite)"]
-  APP["Android app<br/>(planned)"]
+  APP["Android app<br/>(in development)"]
   HS["Home-server dashboard<br/>/api/system"]
 
   W1 & W2 & L & P -- "outbound WebSocket" --> FN
   P -. "container counts (HTTP)" .-> HS
-  DASH -- "outbound WebSocket<br/>(read token)" --> FN
-  APP -. "planned" .-> FN
+  APP -- "outbound WebSocket" --> FN
 ```
 
 | Layer | Tech | Role |
 |---|---|---|
 | Agent | Rust, Tokio, `sysinfo`, `nvml-wrapper`, Convex Rust client | Samples hardware every second, pushes live data and per-minute summaries |
 | Backend | Convex (TypeScript) | Stores devices, latest snapshot and history; tracks who is watching; deletes old data |
-| Dashboard | React, Vite, Convex React client | Live view of every device, plus 1 h / 6 h / 24 h history charts |
-| Android app | Planned | Fleet view, pairing and push alerts (FCM) |
+| Android app | Kotlin + Jetpack Compose | Fleet view, pairing and push alerts (FCM) |
 
 ---
 
@@ -201,10 +198,6 @@ Design notes:
 | `crons.ts` | Schedules the daily retention job |
 | `schema.ts`, `validators.ts` | Table definitions and shared argument validators |
 
-### Dashboard (`dashboard/`)
-
-A React and Vite single-page app. After you enter the read token it shows a KPI row for the whole fleet and a section per device: live CPU, RAM, GPU, disks, battery and processes, and history charts over 1 h, 6 h or 24 h. Warning thresholds are CPU 90 °C, GPU 85 °C and RAM 90 %. See [`dashboard/README.md`](dashboard/README.md).
-
 ---
 
 ## Data model
@@ -292,16 +285,6 @@ npm run typecheck
 
 The backend reads `DASHBOARD_READ_TOKEN` and the registration secret from Convex environment variables.
 
-### Dashboard
-
-```sh
-cd dashboard
-npm install
-VITE_CONVEX_URL=<your Convex URL> npm run dev
-```
-
-Run `npm run build` for a static build in `dist/`.
-
 ---
 
 ## Security
@@ -325,8 +308,7 @@ Run `npm run build` for a static build in `dist/`.
 │   └── config.example.toml
 ├── convex/         Convex backend
 │   └── convex/     schema, functions, crons, tests
-├── dashboard/      React + Vite web dashboard
-├── android/        Android app (planned)
+├── android/        Android app (in development)
 ├── tasks/          Plan and to-do list
 ├── LICENSE
 └── README.md
