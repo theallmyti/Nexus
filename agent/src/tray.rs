@@ -49,9 +49,11 @@ const ID_RESUME: usize = 2020;
 const ID_PAIR: usize = 2025;
 const ID_OPEN_LOGS: usize = 2040;
 const ID_RESTART_SERVICE: usize = 2050;
+const ID_UNPAIR: usize = 2060;
 const ID_EXIT: usize = 2099;
 
 static RESTARTING_UNTIL: AtomicU64 = AtomicU64::new(0);
+static UNPAIRING_UNTIL: AtomicU64 = AtomicU64::new(0);
 
 fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s)
@@ -271,6 +273,7 @@ fn update_tray(hwnd: HWND) {
         let ctrl = control::read_control(&state.data_dir);
         let status = control::read_status(&state.data_dir);
         let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
+        let is_unpairing = control::now_secs() < UNPAIRING_UNTIL.load(Ordering::SeqCst);
 
         let icon = if ctrl.paused {
             state.hicon_paused
@@ -280,6 +283,8 @@ fn update_tray(hwnd: HWND) {
 
         let tip = if is_restarting {
             "Nexus Agent: Restarting service...\nPlease wait...".to_string()
+        } else if is_unpairing {
+            "Nexus Agent: Unpairing device...\nPlease wait...".to_string()
         } else if ctrl.paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
@@ -350,6 +355,7 @@ fn show_context_menu(hwnd: HWND) {
     let is_unpaired = status.as_ref().is_some_and(|s| s.state == "unpaired");
     let is_stopped = status.as_ref().is_some_and(|s| s.state == "stopped");
     let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
+    let is_unpairing = control::now_secs() < UNPAIRING_UNTIL.load(Ordering::SeqCst);
 
     unsafe {
         let hmenu = CreatePopupMenu();
@@ -409,6 +415,8 @@ fn show_context_menu(hwnd: HWND) {
 
         let status_label = if is_restarting {
             "Status: ⏳ Restarting service...".to_string()
+        } else if is_unpairing {
+            "Status: ⏳ Unpairing device...".to_string()
         } else if is_paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
@@ -436,17 +444,15 @@ fn show_context_menu(hwnd: HWND) {
         );
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
 
-        if is_unpaired {
-            AppendMenuW(
-                hmenu,
-                MF_STRING,
-                ID_PAIR,
-                to_wide("Pair This Computer...").as_ptr(),
-            );
-            AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-        }
+        AppendMenuW(
+            hmenu,
+            MF_STRING,
+            ID_PAIR,
+            to_wide("Pair Device...").as_ptr(),
+        );
+        AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
 
-        let pause_flags = if is_stopped || is_restarting {
+        let pause_flags = if is_stopped || is_restarting || is_unpairing {
             MF_POPUP | MF_DISABLED | MF_GRAYED
         } else {
             MF_POPUP
@@ -458,7 +464,7 @@ fn show_context_menu(hwnd: HWND) {
             to_wide("Pause Monitoring").as_ptr(),
         );
 
-        let resume_flags = if is_paused && !is_stopped && !is_restarting {
+        let resume_flags = if is_paused && !is_stopped && !is_restarting && !is_unpairing {
             MF_STRING
         } else {
             MF_STRING | MF_DISABLED | MF_GRAYED
@@ -499,6 +505,24 @@ fn show_context_menu(hwnd: HWND) {
                 to_wide(restart_label).as_ptr(),
             );
         }
+
+        let unpair_flags = if is_unpaired || is_unpairing {
+            MF_STRING | MF_DISABLED | MF_GRAYED
+        } else {
+            MF_STRING
+        };
+        let unpair_label = if is_unpairing {
+            "Unpairing Device..."
+        } else {
+            "Unpair Device"
+        };
+        AppendMenuW(
+            hmenu,
+            unpair_flags,
+            ID_UNPAIR,
+            to_wide(unpair_label).as_ptr(),
+        );
+
         AppendMenuW(hmenu, MF_STRING, ID_EXIT, to_wide("Exit Tray").as_ptr());
 
         let mut pt: POINT = std::mem::zeroed();
@@ -611,6 +635,57 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                     .status();
             });
         }
+        ID_UNPAIR => {
+            let now = control::now_secs();
+            let unpairing_until = UNPAIRING_UNTIL.load(Ordering::SeqCst);
+            if now < unpairing_until {
+                return; // Guard against rapid duplicate clicks
+            }
+            UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
+            update_tray(hwnd);
+
+            let exe_path =
+                std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
+            let config_path = data_dir.join("config.toml");
+            let data_dir_clone = data_dir.clone();
+
+            std::thread::spawn(move || {
+                // 1. Run unpair online via agent exe
+                let _ = std::process::Command::new(&exe_path)
+                    .args(["unpair", &config_path.to_string_lossy()])
+                    .output();
+
+                // 2. Mark local status as unpaired immediately
+                let current_status = control::read_status(&data_dir_clone);
+                let convex_url = current_status.as_ref().and_then(|s| s.convex_url.clone());
+                control::write_status(
+                    &data_dir_clone,
+                    &control::AgentStatus {
+                        state: "unpaired".to_string(),
+                        cpu_util: 0.0,
+                        ram_pct: 0.0,
+                        temp_c: None,
+                        paused_until: None,
+                        last_tick: control::now_secs(),
+                        convex_url,
+                    },
+                );
+
+                // 3. Restart the background service to enter the unpaired waiting loop
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("powershell")
+                        .args([
+                            "-NoProfile",
+                            "-WindowStyle",
+                            "Hidden",
+                            "-Command",
+                            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent -ErrorAction SilentlyContinue'",
+                        ])
+                        .status();
+                }
+            });
+        }
         ID_EXIT => unsafe {
             PostQuitMessage(0);
         },
@@ -663,5 +738,15 @@ mod tests {
         assert!(cooldown >= now + 9);
         RESTARTING_UNTIL.store(0, Ordering::SeqCst);
         assert_eq!(RESTARTING_UNTIL.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_unpair_cooldown_logic() {
+        let now = control::now_secs();
+        UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
+        let cooldown = UNPAIRING_UNTIL.load(Ordering::SeqCst);
+        assert!(cooldown >= now + 9);
+        UNPAIRING_UNTIL.store(0, Ordering::SeqCst);
+        assert_eq!(UNPAIRING_UNTIL.load(Ordering::SeqCst), 0);
     }
 }
