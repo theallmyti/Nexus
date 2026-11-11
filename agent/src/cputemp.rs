@@ -136,16 +136,16 @@ mod imp {
         Err("unsupported CPU architecture".to_string())
     }
 
-    fn pawnio_lib() -> PathBuf {
+    fn pawnio_lib() -> Result<PathBuf, String> {
         let installed = std::env::var_os("ProgramFiles")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"))
             .join("PawnIO")
             .join("PawnIOLib.dll");
-        if installed.exists() {
-            installed
+        if installed.is_file() {
+            Ok(installed)
         } else {
-            PathBuf::from("PawnIOLib.dll")
+            Err("PawnIOLib.dll not found in Program Files".to_string())
         }
     }
 
@@ -160,8 +160,9 @@ mod imp {
     impl Reader {
         pub fn open() -> Result<Self, String> {
             let amd = is_amd()?;
-            // SAFETY: loading the official PawnIOLib; its exports match PawnIOLib.h.
-            let lib = unsafe { Library::new(pawnio_lib()) }
+            let lib_path = pawnio_lib()?;
+            // SAFETY: loading the official PawnIOLib from Program Files; its exports match PawnIOLib.h.
+            let lib = unsafe { Library::new(lib_path) }
                 .map_err(|e| format!("PawnIO not installed ({e})"))?;
             let (open, load, exec, close) = unsafe {
                 (

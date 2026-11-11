@@ -66,6 +66,11 @@ impl Config {
             "\n# Generated on first run. Keep private.\ndevice_secret = \"{secret}\""
         )
         .map_err(ConfigError::Write)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+        }
         self.device_secret = Some(secret.clone());
         Ok(secret)
     }
