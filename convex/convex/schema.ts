@@ -3,7 +3,7 @@
 // isFake: true marks test rows; they are deleted before week 3.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { battery, capabilities, driveLive, driveSummary, ramDetail, topProc } from "./validators";
+import { battery, capabilities, collectorStatus, driveLive, driveSummary, ramDetail, topProc, usage } from "./validators";
 
 export default defineSchema({
   // Accounts (docs/Database.md users, sessions, loginAttempts; docs/Security.md §3–4).
@@ -86,6 +86,7 @@ export default defineSchema({
     }),
     disks: v.optional(v.array(driveLive)),
     uptimeSec: v.optional(v.number()),
+    usage: v.optional(usage),
     battery: v.optional(battery),
     // Optional: only NVIDIA machines send it. Units: MB, W, MHz, %.
     gpu: v.optional(
@@ -122,6 +123,7 @@ export default defineSchema({
     gpuUtilAvg: v.optional(v.number()),
     disks: v.optional(v.array(driveSummary)),
     batteryPct: v.optional(v.number()),
+    collectorStatus: v.optional(collectorStatus),
   })
     .index("by_device_time", ["deviceId", "minuteTs"])
     // For the daily retention job across all devices (FR-50).

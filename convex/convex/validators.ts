@@ -28,6 +28,24 @@ export const battery = v.object({
   rateW: v.optional(v.number()),
 });
 
+// latest.usage: active time today and boot/sleep events (FR-24).
+export const usageEvent = v.object({
+  event: v.union(v.literal("boot"), v.literal("sleep"), v.literal("wake")),
+  ts: v.number(),
+});
+
+export const usage = v.object({
+  activeTimeSec: v.number(),
+  bootTime: v.optional(v.number()),
+  events: v.optional(v.array(usageEvent)),
+});
+
+// summaries.collectorStatus: health per collector ("ok" | "degraded" | "failed") (NFR-07).
+export const collectorStatus = v.record(
+  v.string(),
+  v.union(v.literal("ok"), v.literal("degraded"), v.literal("failed")),
+);
+
 // What the device can report, sent at registration (FR-15, docs/Database.md §2).
 export const capabilities = v.object({
   hasBattery: v.boolean(),

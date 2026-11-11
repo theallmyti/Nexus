@@ -17,6 +17,8 @@ mod hardware;
 mod pair;
 #[cfg(windows)]
 mod service;
+mod supervisor;
+mod usage;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,8 +32,10 @@ use backlog::Backlog;
 use collectors::{Drive, Proc};
 use convex::{ConvexClient, FunctionResult, Value};
 use futures::StreamExt;
+use supervisor::Supervisor;
 use sysinfo::{Components, CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 use tokio::sync::Notify;
+use usage::{UsageTracker, now_wall_secs};
 
 /// FR-30: one summary per minute, always.
 const SUMMARY_EVERY: Duration = Duration::from_secs(60);
@@ -207,7 +211,12 @@ fn capabilities_value(
 
 /// One minute's summary for `agent:pushSummaries`, stamped with this computer's clock (the
 /// server corrects it). Optional readings are left out when absent.
-fn summary_value(minute_ts: u64, s: &Summary, drives: &[Drive]) -> Value {
+fn summary_value(
+    minute_ts: u64,
+    s: &Summary,
+    drives: &[Drive],
+    collector_status: &BTreeMap<String, String>,
+) -> Value {
     let mut a = BTreeMap::new();
     a.insert("minuteTs".to_string(), num(minute_ts as f64));
     a.insert("cpuUtilAvg".to_string(), num(s.cpu_util_avg));
@@ -228,6 +237,13 @@ fn summary_value(minute_ts: u64, s: &Summary, drives: &[Drive]) -> Value {
     }
     if !drives.is_empty() {
         a.insert("disks".to_string(), drives_summary(drives));
+    }
+    if !collector_status.is_empty() {
+        let mut cs = BTreeMap::new();
+        for (k, v) in collector_status {
+            cs.insert(k.clone(), text(v));
+        }
+        a.insert("collectorStatus".to_string(), Value::Object(cs));
     }
     Value::Object(a)
 }
@@ -543,6 +559,29 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     let mut docker: Option<dashboard::DockerSummary> = None;
     let mut top: Vec<Proc> = Vec::new();
 
+    let boot_time = collectors::boot_time();
+    let uptime_init = collectors::uptime_secs().unwrap_or(0);
+    let mut usage_tracker = UsageTracker::new(boot_time, uptime_init, now_wall_secs());
+
+    let mut supervisor = Supervisor::new();
+    supervisor.register("cpu");
+    supervisor.register("memory");
+    if disks.is_some() {
+        supervisor.register("disks");
+    }
+    if cpu_temp_reader.available() || !cfg!(windows) {
+        supervisor.register("cpuTemp");
+    }
+    if gpu_reader.present() {
+        supervisor.register("gpu");
+    }
+    if battery_reader.is_some() {
+        supervisor.register("battery");
+    }
+    if config.dashboard_url.is_some() {
+        supervisor.register("docker");
+    }
+
     // CPU usage needs two samples separated by a short delay.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -564,39 +603,93 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             }
         }
         tick += 1;
+        let now_wall = now_wall_secs();
+        let uptime_now = collectors::uptime_secs().unwrap_or(0);
+        usage_tracker.tick(now_wall);
+
         sys.refresh_cpu_usage();
         sys.refresh_memory();
-        if !cfg!(windows) {
-            components.refresh(false);
+
+        let cpu_util = sys.global_cpu_usage() as f64;
+        if cpu_util.is_nan() {
+            supervisor.record_failure("cpu");
+        } else {
+            supervisor.record_success("cpu");
         }
+
+        let total_mem = sys.total_memory();
+        let ram_pct = if total_mem > 0 {
+            supervisor.record_success("memory");
+            sys.used_memory() as f64 / total_mem as f64 * 100.0
+        } else {
+            supervisor.record_failure("memory");
+            0.0
+        };
+
+        let mut cpu_t = None;
+        if supervisor.can_run("cpuTemp") {
+            if !cfg!(windows) {
+                components.refresh(false);
+            }
+            cpu_t = cpu_temp_reader.read().or_else(|| cpu_temp(&components));
+            if cpu_t.is_some() {
+                supervisor.record_success("cpuTemp");
+            } else if cpu_temp_reader.available() {
+                supervisor.record_failure("cpuTemp");
+            }
+        }
+
         if let Some(url) = config
             .dashboard_url
             .as_deref()
-            .filter(|_| tick % DOCKER_EVERY == 1)
+            .filter(|_| tick % DOCKER_EVERY == 1 && supervisor.can_run("docker"))
         {
             match dashboard::docker_summary(url) {
-                Ok(d) => docker = Some(d),
-                Err(e) => warn!("dashboard read failed: {e}"),
+                Ok(d) => {
+                    docker = Some(d);
+                    supervisor.record_success("docker");
+                }
+                Err(e) => {
+                    warn!("dashboard read failed: {e}");
+                    supervisor.record_failure("docker");
+                }
             }
         }
 
         // Battery changes slowly: read it every 10 s.
         if tick % BATTERY_EVERY == 1
+            && supervisor.can_run("battery")
             && let Some(r) = battery_reader.as_mut()
         {
-            battery_now = r.read();
+            if let Some(b) = r.read() {
+                battery_now = Some(b);
+                supervisor.record_success("battery");
+            } else {
+                supervisor.record_failure("battery");
+            }
         }
 
         let now = now_ms();
         // Live: only while a viewer is present (FR-31).
         let live = viewer_until.load(Ordering::Relaxed) > now;
 
-        let cpu_util = sys.global_cpu_usage() as f64;
-        let ram_pct = sys.used_memory() as f64 / sys.total_memory() as f64 * 100.0;
-        // Full mode (PawnIO, admin) first; otherwise the OS sensors (Linux hwmon).
-        let cpu_t = cpu_temp_reader.read().or_else(|| cpu_temp(&components));
         // GPU: every second while live; every 30 s otherwise, without keeping NVML loaded.
-        let gpu = gpu_reader.read(live).await;
+        let gpu = if gpu_reader.present() {
+            if supervisor.can_run("gpu") {
+                let g = gpu_reader.read(live).await;
+                if g.is_some() {
+                    supervisor.record_success("gpu");
+                } else {
+                    supervisor.record_failure("gpu");
+                }
+                g
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         aggregator.push(Sample {
             cpu_util,
             ram_pct,
@@ -622,10 +715,16 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
 
         // Drives: every 10 s while live, and before each summary.
         if ((live && tick % DRIVES_EVERY == 1) || summary_due)
+            && supervisor.can_run("disks")
             && let Some(d) = disks.as_mut()
         {
             d.refresh(true);
             drives = collectors::drives(d);
+            if !drives.is_empty() {
+                supervisor.record_success("disks");
+            } else {
+                supervisor.record_failure("disks");
+            }
         }
 
         if live {
@@ -661,6 +760,24 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             if let Some(up) = collectors::uptime_secs() {
                 args.insert("uptimeSec".to_string(), num(up as f64));
             }
+            let usage_stats = usage_tracker.stats(uptime_now);
+            let mut usage_obj = BTreeMap::new();
+            usage_obj.insert(
+                "activeTimeSec".to_string(),
+                num(usage_stats.active_time_today_sec as f64),
+            );
+            if let Some(bt) = usage_stats.boot_time {
+                usage_obj.insert("bootTime".to_string(), num(bt as f64));
+            }
+            if !usage_stats.events.is_empty() {
+                let evts = usage_stats
+                    .events
+                    .iter()
+                    .map(|e| obj([("event", text(&e.event)), ("ts", num(e.ts as f64))]))
+                    .collect();
+                usage_obj.insert("events".to_string(), Value::Array(evts));
+            }
+            args.insert("usage".to_string(), Value::Object(usage_obj));
             if let Some(t) = cpu_t {
                 args.insert("cpuTemp".to_string(), num(t));
             }
@@ -704,7 +821,13 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                     s.cpu_util_max,
                     s.ram_pct_avg
                 );
-                if backlog.push(summary_value(now / 60_000 * 60_000, &s, &drives)) {
+                let col_status = supervisor.status_map();
+                if backlog.push(summary_value(
+                    now / 60_000 * 60_000,
+                    &s,
+                    &drives,
+                    &col_status,
+                )) {
                     warn!("offline for over a day: dropped the oldest waiting summary");
                 }
             }

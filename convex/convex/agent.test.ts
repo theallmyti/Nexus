@@ -198,7 +198,50 @@ test("pushLatest stores the battery and rejects impossible charge", async () => 
 
   await expect(
     t.mutation(api.agent.pushLatest, { ...base, battery: { pct: 120, charging: false } }),
-  ).rejects.toThrow(/battery value out of range/);
+    )
+    .rejects.toThrow(/battery value out of range/);
+});
+
+test("pushLatest stores usage tracking active time and boot/sleep events", async () => {
+  const { t } = await setup();
+  const base = { secretHash: HASH, ts: Date.now(), cpuUtil: 20, ramUsedPct: 50 };
+  await t.mutation(api.agent.pushLatest, {
+    ...base,
+    usage: {
+      activeTimeSec: 7200,
+      bootTime: 1700000000,
+      events: [
+        { event: "boot", ts: 1700000000 },
+        { event: "sleep", ts: 1700003600 },
+        { event: "wake", ts: 1700007200 },
+      ],
+    },
+  });
+  const [row] = await t.run((ctx) => ctx.db.query("latest").collect());
+  expect(row.usage?.activeTimeSec).toBe(7200);
+  expect(row.usage?.bootTime).toBe(1700000000);
+  expect(row.usage?.events).toHaveLength(3);
+  expect(row.usage?.events?.[1].event).toBe("sleep");
+
+  await expect(
+    t.mutation(api.agent.pushLatest, {
+      ...base,
+      usage: { activeTimeSec: -1 },
+    }),
+  ).rejects.toThrow(/usage value out of range/);
+});
+
+test("pushSummary and pushSummaries store collectorStatus", async () => {
+  const { t } = await setup();
+  const status = { cpu: "ok" as const, memory: "ok" as const, gpu: "degraded" as const, docker: "failed" as const };
+  await t.mutation(api.agent.pushSummary, {
+    secretHash: HASH,
+    minuteTs: 1,
+    ...SUMMARY,
+    collectorStatus: status,
+  });
+  const [row] = await t.run((ctx) => ctx.db.query("summaries").collect());
+  expect(row.collectorStatus).toEqual(status);
 });
 
 test("unpair removes the device, its live row and all history", async () => {

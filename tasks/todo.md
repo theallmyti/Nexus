@@ -97,20 +97,20 @@ Common verification commands:
 
 ### Task 13: RAM details, usage time, battery
 - [x] Battery on laptops (FR-25): charge, charging, health, cycles (when Windows reports them), power rate; charge in summaries
-- [ ] Active time today and boot/sleep log (FR-24). RAM detail and uptime were done in Task 12.
+- [x] Active time today and boot/sleep log (FR-24). RAM detail and uptime were done in Task 12.
 - **Size:** M
 
 ### Task 14: Supervisor
-- [ ] Each collector runs isolated; a failing one is restarted with backoff and reported in `collectorStatus` (NFR-07)
+- [x] Each collector runs isolated; a failing one is restarted with backoff and reported in `collectorStatus` (NFR-07)
 - **Size:** M
 
 ### Task 15: Service install and release CI
-- [ ] systemd unit (Linux), user-level auto-start (Windows), Pi Docker kept
-- [ ] GitHub Actions: tag `vX.Y.Z` builds Windows x64, Linux x64, ARM64 + `SHA256SUMS` (FR-60, T-50)
+- [x] systemd unit (Linux), user-level auto-start (Windows), Pi Docker kept
+- [x] GitHub Actions: tag `vX.Y.Z` builds Windows x64, Linux x64, ARM64 + `SHA256SUMS` (FR-60, T-50)
 - **Size:** M
 
 ### Task 16: RAM and CPU targets
-- [ ] Measure idle and live RSS/CPU on all devices (Testing.md §3); fix the laptop's ~41 MB; record results in README
+- [x] Measure idle and live RSS/CPU on all devices (Testing.md §3); fix the laptop's ~41 MB; record results in README
   - 3 Nov, laptop (release, 3 min each): idle 40.7 MB / 0.41 %, live 41.3 MB / 0.80 %. After skipping WMI sensors on Windows: idle 37.0 MB / 0.19 %. Without NVML (test build): 19.7 MB working set, 7.3 MB private. NVML costs ~17 MB. Pi: 9.8 MB RSS, ~0.1 % CPU.
   - Decision (4 Nov): NVIDIA library only while someone is watching; otherwise read every 30 s. NVML cannot be unloaded on Windows, so it runs in a helper process (`pc-monitor-agent gpu`).
   - 4 Nov, laptop: idle agent 23.2 MB working set / 7.5 MB private, CPU 0.29 % + 0.28 % for GPU readings = 0.57 %. Live: agent 23.9 MB + helper 31.8 MB, CPU 0.72 %.

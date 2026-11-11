@@ -11,7 +11,7 @@ import { deviceBySecretHash, removeDeviceData } from "./model";
 import { LATEST_AGENT_VERSION, isUnsupported } from "./versions";
 import { RETENTION_MS } from "./summaries";
 import { v, ConvexError, type Infer } from "convex/values";
-import { battery, capabilities, driveLive, driveSummary, ramDetail, topProc } from "./validators";
+import { battery, capabilities, collectorStatus, driveLive, driveSummary, ramDetail, topProc, usage } from "./validators";
 
 // docs/Security.md §2: at most one summary per 50 s per device.
 const SUMMARY_MIN_GAP_MS = 50_000;
@@ -107,6 +107,7 @@ export const pushLatest = mutation({
     topProcs: v.optional(v.array(topProc)),
     disks: v.optional(v.array(driveLive)),
     uptimeSec: v.optional(v.number()),
+    usage: v.optional(usage),
     battery: v.optional(battery),
     gpu: v.optional(
       v.object({
@@ -140,6 +141,9 @@ export const pushLatest = mutation({
     if (args.battery && (args.battery.pct < 0 || args.battery.pct > 100)) {
       throw new ConvexError("battery value out of range");
     }
+    if (args.usage && args.usage.activeTimeSec < 0) {
+      throw new ConvexError("usage value out of range");
+    }
     const device = await deviceBySecretHash(ctx, args.secretHash);
     if (!device) {
       throw new ConvexError("unknown device");
@@ -154,6 +158,7 @@ export const pushLatest = mutation({
       ram: { usedPct: args.ramUsedPct, detail: args.ram, topProcs: args.topProcs },
       disks: args.disks,
       uptimeSec: args.uptimeSec,
+      usage: args.usage,
       battery: args.battery,
       gpu: args.gpu,
       pi: args.docker ? { docker: args.docker } : undefined,
@@ -189,6 +194,7 @@ const summaryFields = {
   gpuUtilAvg: v.optional(v.number()),
   disks: v.optional(v.array(driveSummary)),
   batteryPct: v.optional(v.number()),
+  collectorStatus: v.optional(collectorStatus),
 };
 const summaryValidator = v.object(summaryFields);
 type SummaryFields = Infer<typeof summaryValidator>;

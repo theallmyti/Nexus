@@ -122,6 +122,10 @@ pub fn uptime_secs() -> Option<u64> {
     System::uptime().ok()
 }
 
+pub fn boot_time() -> Option<u64> {
+    System::boot_time().ok()
+}
+
 /// True when the OS exposes per-core temperature sensors (Linux coretemp, not Windows no-driver).
 pub fn has_per_core_temps(components: &Components) -> bool {
     components
