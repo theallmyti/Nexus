@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PCMonitor" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/deep_navy</item>
+        <item name="android:navigationBarColor">@color/deep_navy</item>
+        <item name="android:windowBackground">@color/deep_navy</item>
+    </style>
+
+    <style name="Theme.PCMonitor.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/deep_navy</item>
+        <item name="postSplashScreenTheme">@style/Theme.PCMonitor</item>
+    </style>
+</resources>
+
