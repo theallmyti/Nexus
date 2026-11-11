@@ -10,6 +10,7 @@ mod backlog;
 mod battery;
 mod collectors;
 mod config;
+mod control;
 mod cputemp;
 mod dashboard;
 mod gpu;
@@ -18,6 +19,8 @@ mod pair;
 #[cfg(windows)]
 mod service;
 mod supervisor;
+#[cfg(windows)]
+mod tray;
 mod usage;
 
 use std::collections::BTreeMap;
@@ -444,6 +447,12 @@ fn main() {
             }
             return;
         }
+        // Started in the user desktop session to show taskbar tray icon.
+        #[cfg(windows)]
+        Some("tray") => {
+            tray::run();
+            return;
+        }
         _ => {}
     }
     let path = PathBuf::from(first.unwrap_or_else(|| "config.toml".to_string()));
@@ -511,6 +520,24 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         },
         drives.len()
     );
+
+    let data_dir = path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    control::write_status(
+        &data_dir,
+        &control::AgentStatus {
+            state: "connecting".to_string(),
+            cpu_util: 0.0,
+            ram_pct: 0.0,
+            temp_c: None,
+            paused_until: None,
+            last_tick: usage::now_wall_secs(),
+            convex_url: Some(config.convex_url.clone()),
+        },
+    );
+
     let mut client = connect(&config.convex_url).await;
 
     // Say hello: the device must be paired (docs/Flow.md §3). Until then, retry every minute,
@@ -536,6 +563,18 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         if let Some(answer) = call(&mut client, "agent:hello", hello_args.clone()).await {
             break answer;
         }
+        control::write_status(
+            &data_dir,
+            &control::AgentStatus {
+                state: "unpaired".to_string(),
+                cpu_util: 0.0,
+                ram_pct: 0.0,
+                temp_c: None,
+                paused_until: None,
+                last_tick: usage::now_wall_secs(),
+                convex_url: Some(config.convex_url.clone()),
+            },
+        );
         say!(
             "not connected yet (see above; if not paired, run `pc-monitor-agent pair`); retrying in 60 s"
         );
@@ -590,6 +629,11 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     // First summary after 10 s, so a newly paired computer shows data at once; then every 60 s.
     let mut next_summary = Instant::now() + Duration::from_secs(10);
     let mut was_live = false;
+    let mut was_paused = false;
+    let data_dir = path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
     let mut tick: u64 = 0;
     let mut ticker = tokio::time::interval(Duration::from_secs(config.live_interval_secs));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -605,6 +649,33 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         tick += 1;
         let now_wall = now_wall_secs();
         let uptime_now = collectors::uptime_secs().unwrap_or(0);
+
+        let pause_ctrl = control::read_control(&data_dir);
+        if pause_ctrl.paused {
+            if !was_paused {
+                say!("monitoring paused by user");
+                was_paused = true;
+            }
+            if tick.is_multiple_of(2) {
+                control::write_status(
+                    &data_dir,
+                    &control::AgentStatus {
+                        state: "paused".to_string(),
+                        cpu_util: 0.0,
+                        ram_pct: 0.0,
+                        temp_c: None,
+                        paused_until: pause_ctrl.until,
+                        last_tick: now_wall,
+                        convex_url: Some(config.convex_url.clone()),
+                    },
+                );
+            }
+            continue;
+        } else if was_paused {
+            say!("monitoring resumed");
+            was_paused = false;
+        }
+
         usage_tracker.tick(now_wall);
 
         sys.refresh_cpu_usage();
@@ -637,6 +708,21 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             } else if cpu_temp_reader.available() {
                 supervisor.record_failure("cpuTemp");
             }
+        }
+
+        if tick.is_multiple_of(2) {
+            control::write_status(
+                &data_dir,
+                &control::AgentStatus {
+                    state: "active".to_string(),
+                    cpu_util,
+                    ram_pct,
+                    temp_c: cpu_t,
+                    paused_until: None,
+                    last_tick: now_wall,
+                    convex_url: Some(config.convex_url.clone()),
+                },
+            );
         }
 
         if let Some(url) = config

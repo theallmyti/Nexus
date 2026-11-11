@@ -1175,6 +1175,7 @@ dependencies = [
  "toml",
  "ureq",
  "windows-service",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

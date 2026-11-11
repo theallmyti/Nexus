@@ -74,6 +74,10 @@ Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flag
 
 [Icons]
 Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
+Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"
+
+[Run]
+Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
@@ -191,12 +195,17 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Code: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     LockDir(ExpandConstant('{app}'), True);
     WriteConfig();
     LockDir(DataDir(), False);
+    SaveStringToFile(DataDir() + '\control.json', '{"paused":false}', False);
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\control.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\status.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
     // Silent installs skip the pairing page: start now; the agent waits until it is paired.
@@ -296,6 +305,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM pc-monitor-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Sc('stop {#ServiceName}');
     // Remove this computer and its history from Nexus (needs the config, so before files go).
     Exec(ExpandConstant('{app}\pc-monitor-agent.exe'), 'unpair "' + DataDir() + '\config.toml"',
