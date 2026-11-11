@@ -1,10 +1,10 @@
 //! Local control and status IPC via JSON files in data_dir (%ProgramData%\PCMonitor).
 //! Bridges the background service (Session 0) and the user desktop tray (Session 1).
 
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PauseState {

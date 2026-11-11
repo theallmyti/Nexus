@@ -58,8 +58,12 @@ mod tests {
         assert!(is_allowed_dashboard_url("http://127.0.0.1:8000/api/system"));
         assert!(is_allowed_dashboard_url("https://my-nas.local/api/system"));
         // Metadata / SSRF blocked
-        assert!(!is_allowed_dashboard_url("http://169.254.169.254/latest/meta-data"));
-        assert!(!is_allowed_dashboard_url("http://metadata.google.internal/computeMetadata/v1/"));
+        assert!(!is_allowed_dashboard_url(
+            "http://169.254.169.254/latest/meta-data"
+        ));
+        assert!(!is_allowed_dashboard_url(
+            "http://metadata.google.internal/computeMetadata/v1/"
+        ));
         assert!(!is_allowed_dashboard_url("file:///etc/passwd"));
         assert!(!is_allowed_dashboard_url("gopher://127.0.0.1:25/"));
     }

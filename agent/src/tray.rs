@@ -15,16 +15,16 @@ use windows_sys::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HBITMAP};
 use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconW, ShellExecuteW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
-    NIM_MODIFY, NOTIFYICONDATAW,
+    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    Shell_NotifyIconW, ShellExecuteW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-    DestroyIcon, DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, PostQuitMessage,
-    RegisterClassExW, SetForegroundWindow, SetTimer, TrackPopupMenu, TranslateMessage,
-    HICON, ICONINFO, IDI_APPLICATION, LoadIconW, MF_DISABLED, MF_GRAYED, MF_POPUP,
-    MF_SEPARATOR, MF_STRING, MSG, TPM_RIGHTBUTTON, WM_COMMAND, WM_DESTROY, WM_RBUTTONUP,
-    WM_TIMER, WM_USER, WNDCLASSEXW, WS_POPUP,
+    AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
+    DestroyMenu, DispatchMessageW, GetCursorPos, GetMessageW, HICON, ICONINFO, IDI_APPLICATION,
+    LoadIconW, MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
+    RegisterClassExW, SetForegroundWindow, SetTimer, TPM_RIGHTBUTTON, TrackPopupMenu,
+    TranslateMessage, WM_COMMAND, WM_DESTROY, WM_RBUTTONUP, WM_TIMER, WM_USER, WNDCLASSEXW,
+    WS_POPUP,
 };
 
 use crate::control;
@@ -52,7 +52,10 @@ const ID_RESTART_SERVICE: usize = 2050;
 const ID_EXIT: usize = 2099;
 
 fn to_wide(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 /// Generate a crisp 16x16 32-bit RGBA icon in memory.
@@ -275,8 +278,15 @@ fn update_tray(hwnd: HWND) {
         let tip = if ctrl.paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
-                let rem_min = if until > now { (until - now) / 60 + 1 } else { 0 };
-                format!("Nexus Agent: Paused\nLogging paused (resumes in ~{}m)", rem_min)
+                let rem_min = if until > now {
+                    (until - now) / 60 + 1
+                } else {
+                    0
+                };
+                format!(
+                    "Nexus Agent: Paused\nLogging paused (resumes in ~{}m)",
+                    rem_min
+                )
             } else {
                 "Nexus Agent: Paused\nLogging paused indefinitely".to_string()
             }
@@ -336,22 +346,66 @@ fn show_context_menu(hwnd: HWND) {
         let hmenu = CreatePopupMenu();
         let hsubmenu = CreatePopupMenu();
 
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_15M, to_wide("15 minutes").as_ptr());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_30M, to_wide("30 minutes").as_ptr());
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_15M,
+            to_wide("15 minutes").as_ptr(),
+        );
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_30M,
+            to_wide("30 minutes").as_ptr(),
+        );
         AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_1H, to_wide("1 hour").as_ptr());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_2H, to_wide("2 hours").as_ptr());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_4H, to_wide("4 hours").as_ptr());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_8H, to_wide("8 hours").as_ptr());
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_2H,
+            to_wide("2 hours").as_ptr(),
+        );
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_4H,
+            to_wide("4 hours").as_ptr(),
+        );
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_8H,
+            to_wide("8 hours").as_ptr(),
+        );
         AppendMenuW(hsubmenu, MF_SEPARATOR, 0, null());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_CUSTOM, to_wide("Custom duration...").as_ptr());
-        AppendMenuW(hsubmenu, MF_STRING, ID_PAUSE_INDEF, to_wide("Pause indefinitely").as_ptr());
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_CUSTOM,
+            to_wide("Custom duration...").as_ptr(),
+        );
+        AppendMenuW(
+            hsubmenu,
+            MF_STRING,
+            ID_PAUSE_INDEF,
+            to_wide("Pause indefinitely").as_ptr(),
+        );
 
-        AppendMenuW(hmenu, MF_STRING | MF_DISABLED | MF_GRAYED, ID_HEADER, to_wide("Nexus Agent").as_ptr());
+        AppendMenuW(
+            hmenu,
+            MF_STRING | MF_DISABLED | MF_GRAYED,
+            ID_HEADER,
+            to_wide("Nexus Agent").as_ptr(),
+        );
 
         let status_label = if is_paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
-                let rem_min = if until > now { (until - now) / 60 + 1 } else { 0 };
+                let rem_min = if until > now {
+                    (until - now) / 60 + 1
+                } else {
+                    0
+                };
                 format!("Status: ⏸ Paused (~{}m remaining)", rem_min)
             } else {
                 "Status: ⏸ Paused indefinitely".to_string()
@@ -361,25 +415,64 @@ fn show_context_menu(hwnd: HWND) {
         } else {
             "Status: ● Active (Logging)".to_string()
         };
-        AppendMenuW(hmenu, MF_STRING | MF_DISABLED | MF_GRAYED, ID_STATUS, to_wide(&status_label).as_ptr());
+        AppendMenuW(
+            hmenu,
+            MF_STRING | MF_DISABLED | MF_GRAYED,
+            ID_STATUS,
+            to_wide(&status_label).as_ptr(),
+        );
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
 
         if is_unpaired {
-            AppendMenuW(hmenu, MF_STRING, ID_PAIR, to_wide("Pair This Computer...").as_ptr());
+            AppendMenuW(
+                hmenu,
+                MF_STRING,
+                ID_PAIR,
+                to_wide("Pair This Computer...").as_ptr(),
+            );
             AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
         }
 
-        AppendMenuW(hmenu, MF_POPUP, hsubmenu as usize, to_wide("Pause Monitoring").as_ptr());
+        AppendMenuW(
+            hmenu,
+            MF_POPUP,
+            hsubmenu as usize,
+            to_wide("Pause Monitoring").as_ptr(),
+        );
 
-        let resume_flags = if is_paused { MF_STRING } else { MF_STRING | MF_DISABLED | MF_GRAYED };
-        AppendMenuW(hmenu, resume_flags, ID_RESUME, to_wide("Resume Monitoring").as_ptr());
+        let resume_flags = if is_paused {
+            MF_STRING
+        } else {
+            MF_STRING | MF_DISABLED | MF_GRAYED
+        };
+        AppendMenuW(
+            hmenu,
+            resume_flags,
+            ID_RESUME,
+            to_wide("Resume Monitoring").as_ptr(),
+        );
 
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-        AppendMenuW(hmenu, MF_STRING, ID_DASHBOARD, to_wide("Open Web Dashboard").as_ptr());
-        AppendMenuW(hmenu, MF_STRING, ID_OPEN_LOGS, to_wide("Open Logs...").as_ptr());
+        AppendMenuW(
+            hmenu,
+            MF_STRING,
+            ID_DASHBOARD,
+            to_wide("Open Web Dashboard").as_ptr(),
+        );
+        AppendMenuW(
+            hmenu,
+            MF_STRING,
+            ID_OPEN_LOGS,
+            to_wide("Open Logs...").as_ptr(),
+        );
 
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-        AppendMenuW(hmenu, MF_STRING, ID_RESTART_SERVICE, to_wide("Restart Service").as_ptr());
+        AppendMenuW(
+            hmenu,
+            MF_STRING,
+            ID_RESTART_SERVICE,
+            to_wide("Restart Service").as_ptr(),
+        );
         AppendMenuW(hmenu, MF_STRING, ID_EXIT, to_wide("Exit Tray").as_ptr());
 
         let mut pt: POINT = std::mem::zeroed();
@@ -438,7 +531,8 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             update_tray(hwnd);
         }
         ID_PAIR => {
-            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
+            let exe_path =
+                std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
             let config_path = data_dir.join("config.toml");
             std::thread::spawn(move || {
                 #[cfg(windows)]
@@ -529,7 +623,10 @@ pub fn is_safe_web_url(url: &str) -> bool {
         return false;
     }
     // Disallow whitespace, quotes, or dangerous control characters
-    if lower.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>') {
+    if lower
+        .chars()
+        .any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>')
+    {
         return false;
     }
     true
