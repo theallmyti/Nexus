@@ -48,3 +48,7 @@ EOF
 tar -czf - -C "$stage" . >> "$out"
 chmod 755 "$out"
 echo "Built $out ($(wc -c < "$out") bytes)"
+
+cp "$here/uninstall.sh" "$root/dist/pc-monitor-agent-uninstall.sh"
+chmod 755 "$root/dist/pc-monitor-agent-uninstall.sh"
+echo "Generated $root/dist/pc-monitor-agent-uninstall.sh"
