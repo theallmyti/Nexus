@@ -85,6 +85,13 @@ impl UsageTracker {
             self.active_time_today_sec = 0;
         }
 
+        // Handle backward clock adjustments gracefully (e.g. manual clock fix or NTP sync)
+        if now_wall < self.last_tick_wall {
+            self.last_tick_wall = now_wall;
+            self.last_tick_mono = Instant::now();
+            return;
+        }
+
         let wall_delta = now_wall.saturating_sub(self.last_tick_wall);
         if wall_delta > SLEEP_THRESHOLD_SECS {
             // Suspended/slept: record sleep at last tick, wake at now_wall
@@ -177,5 +184,19 @@ mod tests {
         }
         assert_eq!(tracker.events.len(), MAX_EVENTS);
         assert_eq!(tracker.events.back().unwrap().ts, 1029);
+    }
+
+    #[test]
+    fn tracker_handles_backward_clock_jump() {
+        let now = 1_700_000_100;
+        let mut tracker = UsageTracker::new(Some(now - 100), 100, now);
+        let initial_active = tracker.stats(100).active_time_today_sec;
+
+        // Clock adjusted backward by 50 seconds
+        tracker.tick(now - 50);
+        // Next normal tick 1s later
+        tracker.tick(now - 49);
+        let s = tracker.stats(101);
+        assert_eq!(s.active_time_today_sec, initial_active + 1);
     }
 }

@@ -31,6 +31,8 @@ pub fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+pub const MAX_PAUSE_SECS: u64 = 24 * 60 * 60; // Max 24 hours pause policy
+
 /// Read control.json. If a timed pause has expired, automatically clears the pause.
 pub fn read_control(data_dir: &Path) -> PauseState {
     let path = data_dir.join("control.json");
@@ -56,9 +58,10 @@ pub fn read_control(data_dir: &Path) -> PauseState {
     state
 }
 
-/// Set pause state with an optional duration in seconds (None = indefinitely).
+/// Set pause state with an optional duration in seconds (None or excessive values capped at MAX_PAUSE_SECS).
 pub fn set_pause(data_dir: &Path, duration_secs: Option<u64>, reason: &str) {
-    let until = duration_secs.map(|d| now_secs() + d);
+    let duration = duration_secs.unwrap_or(MAX_PAUSE_SECS).min(MAX_PAUSE_SECS);
+    let until = Some(now_secs() + duration);
     let state = PauseState {
         paused: true,
         until,

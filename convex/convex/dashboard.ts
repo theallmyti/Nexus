@@ -166,6 +166,9 @@ export const confirmPairing = mutation({
     const existing = await deviceBySecretHash(ctx, r.secretHash);
     let deviceId;
     if (existing) {
+      if (existing.userId && existing.userId !== user._id) {
+        throw new ConvexError("device already paired to another account");
+      }
       await ctx.db.patch(existing._id, { userId: user._id, isFake: false });
       deviceId = existing._id;
     } else {

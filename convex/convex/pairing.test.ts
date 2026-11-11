@@ -96,3 +96,20 @@ test("confirming needs a signed-in user, and status needs the right device", asy
     /invalid device key/,
   );
 });
+
+test("a device already owned by another user cannot be hijacked by pairing", async () => {
+  const t = convexTest(schema, modules);
+  const ownerToken = await signedIn(t);
+  const attackerToken = (await t.action(api.auth.signUp, { email: "attacker@example.com", password: "password two" })).token;
+
+  // Owner pairs the device first
+  const { code: ownerCode } = await t.mutation(api.pairing.start, DEVICE);
+  await t.mutation(api.dashboard.confirmPairing, { token: ownerToken, code: ownerCode });
+
+  // Attacker attempts to pair the same device
+  const { code: attackCode } = await t.mutation(api.pairing.start, DEVICE);
+  await expect(t.mutation(api.dashboard.confirmPairing, { token: attackerToken, code: attackCode })).rejects.toThrow(
+    /device already paired to another account/,
+  );
+});
+
