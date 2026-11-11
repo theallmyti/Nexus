@@ -131,9 +131,7 @@ impl Ui {
                 }
                 println!("  Code: {}", spaced(code));
                 println!();
-                println!(
-                    "  On your phone: open Nexus, tap \"Pair device\", and scan this QR code"
-                );
+                println!("  On your phone: open Nexus, tap \"Pair device\", and scan this QR code");
                 println!("  (or type the code). A new code appears if this one expires.");
                 println!();
             }
