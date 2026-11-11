@@ -46,6 +46,11 @@ export default defineSchema({
     secretHash: v.string(), // SHA-256 hex of the device secret (docs/Security.md §6)
     lastSeenAt: v.number(),
     isFake: v.boolean(),
+    online: v.optional(v.boolean()),
+    hostname: v.optional(v.string()),
+    kind: v.optional(v.string()),
+    os: v.optional(v.string()),
+    pairedAt: v.optional(v.number()),
     // Live data flows only while this is in the future (docs/Flow.md §4, D3).
     viewerUntil: v.optional(v.number()),
     // Server time of the last accepted summary, for the 50 s limit (docs/Security.md §2).
@@ -65,6 +70,7 @@ export default defineSchema({
     os: v.string(),
     status: v.union(v.literal("pending"), v.literal("confirmed")),
     deviceId: v.optional(v.id("devices")),
+    userId: v.optional(v.union(v.id("users"), v.string())),
     expiresAt: v.number(),
   })
     .index("by_code", ["code"])
@@ -73,6 +79,7 @@ export default defineSchema({
 
   latest: defineTable({
     deviceId: v.id("devices"),
+    userId: v.optional(v.union(v.id("users"), v.string())),
     ts: v.number(),
     cpu: v.object({
       util: v.number(),
@@ -125,6 +132,7 @@ export default defineSchema({
     disks: v.optional(v.array(driveSummary)),
     batteryPct: v.optional(v.number()),
     collectorStatus: v.optional(collectorStatus),
+    userId: v.optional(v.union(v.id("users"), v.string())),
   })
     .index("by_device_time", ["deviceId", "minuteTs"])
     // For the daily retention job across all devices (FR-50).
