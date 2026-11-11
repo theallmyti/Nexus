@@ -1,12 +1,16 @@
 //! Log lines go to the terminal, or to a file when running as a Windows service (no console).
 
+#[cfg(windows)]
 use std::fs::File;
 #[cfg(windows)]
 use std::fs::{self, OpenOptions};
+#[cfg(windows)]
 use std::io::Write;
 #[cfg(windows)]
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
+#[cfg(windows)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
@@ -105,7 +109,7 @@ macro_rules! warn {
     ($($arg:tt)*) => { $crate::logging::write(&format!($($arg)*), true) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
