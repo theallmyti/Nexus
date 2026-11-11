@@ -55,6 +55,7 @@ import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextGray
 import com.pcmonitor.app.ui.theme.TextWhite
+import com.pcmonitor.app.util.PairingHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -80,13 +81,7 @@ fun PairingProgressScreen(
     var pairedDeviceName by remember { mutableStateOf("PC") }
 
     LaunchedEffect(Unit) {
-        val cleanCode = code.trim()
-            .removePrefix("PCMONITOR-PAIR:")
-            .removePrefix("pcmonitor-pair:")
-            .replace("-", "")
-            .replace(" ", "")
-            .trim()
-            .uppercase()
+        val cleanCode = PairingHelper.normalizeCode(code)
 
         delay(600L)
         currentStep = 2
@@ -96,7 +91,7 @@ fun PairingProgressScreen(
         currentStep = 3
         progress = 0.75f
 
-        // Confirm pairing code on Convex backend using the logged-in user's email
+        // Confirm pairing code on Convex backend using session token or email
         var pairingSuccess = false
         var deviceId = ""
         var hostname = "Monitored PC"
@@ -104,50 +99,114 @@ fun PairingProgressScreen(
 
         withContext(Dispatchers.IO) {
             try {
+                val token = userPreferencesRepository.getSessionToken()
                 val email = userPreferencesRepository.userEmail.first().trim()
-                if (email.isBlank()) {
-                    err = "Please log in before pairing a device."
-                    return@withContext
-                }
+
                 val client = OkHttpClient()
                 val mediaType = "application/json; charset=utf-8".toMediaType()
-                val json = JSONObject().apply {
-                    put("path", "pairing:confirm")
-                    put("args", JSONObject().apply {
-                        put("code", cleanCode)
-                        put("userEmail", email.lowercase().trim())
-                    })
-                }
-                val req = Request.Builder()
-                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                    .post(json.toString().toRequestBody(mediaType))
-                    .build()
-                val resp = client.newCall(req).execute()
-                val bodyStr = resp.body?.string() ?: ""
-                resp.close()
 
-                if (bodyStr.isNotBlank()) {
-                    val envelope = JSONObject(bodyStr)
-                    val status = envelope.optString("status")
-                    if (status == "success") {
-                        val value = envelope.optJSONObject("value")
-                        if (value != null && value.optBoolean("success", true)) {
-                            pairingSuccess = true
-                            deviceId = value.optString("deviceId", "dev_${System.currentTimeMillis()}")
-                            hostname = value.optString("name", "Monitored PC")
-                        } else {
-                            err = value?.optString("message") ?: "Pairing not confirmed."
-                        }
-                    } else {
-                        val errMsg = envelope.optString("errorMessage")
-                        err = if (errMsg.contains("expired", ignoreCase = true)) {
-                            "Pairing code expired. Run 'pc-monitor-agent pair' on PC for a new code."
-                        } else {
-                            "Pairing code not found or invalid ($cleanCode)."
+                // Step 1: If session token exists, check and confirm via dashboard API contract
+                if (!token.isNullOrBlank()) {
+                    // checkPairingCode
+                    val checkJson = JSONObject().apply {
+                        put("path", "dashboard:checkPairingCode")
+                        put("args", JSONObject().apply {
+                            put("token", token)
+                            put("code", cleanCode)
+                        })
+                    }
+                    val checkReq = Request.Builder()
+                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                        .post(checkJson.toString().toRequestBody(mediaType))
+                        .build()
+                    val checkResp = client.newCall(checkReq).execute()
+                    val checkBody = checkResp.body?.string() ?: ""
+                    checkResp.close()
+
+                    if (checkBody.isNotBlank()) {
+                        val checkEnv = JSONObject(checkBody)
+                        if (checkEnv.optString("status") == "success") {
+                            val checkVal = checkEnv.optJSONObject("value")
+                            if (checkVal != null) {
+                                hostname = checkVal.optString("name", "Monitored PC")
+                            }
                         }
                     }
-                } else {
-                    err = "Empty response from server."
+
+                    // confirmPairing
+                    val confirmJson = JSONObject().apply {
+                        put("path", "dashboard:confirmPairing")
+                        put("args", JSONObject().apply {
+                            put("token", token)
+                            put("code", cleanCode)
+                        })
+                    }
+                    val confirmReq = Request.Builder()
+                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                        .post(confirmJson.toString().toRequestBody(mediaType))
+                        .build()
+                    val confirmResp = client.newCall(confirmReq).execute()
+                    val confirmBody = confirmResp.body?.string() ?: ""
+                    confirmResp.close()
+
+                    if (confirmBody.isNotBlank()) {
+                        val env = JSONObject(confirmBody)
+                        if (env.optString("status") == "success") {
+                            val v = env.optJSONObject("value")
+                            if (v != null) {
+                                pairingSuccess = true
+                                deviceId = v.optString("deviceId", "dev_${System.currentTimeMillis()}")
+                                hostname = v.optString("name", hostname)
+                            }
+                        } else {
+                            err = env.optString("errorMessage")
+                        }
+                    }
+                }
+
+                // Step 2: Fallback to pairing:confirm with userEmail if token was absent or returned error
+                if (!pairingSuccess && email.isNotBlank()) {
+                    val json = JSONObject().apply {
+                        put("path", "pairing:confirm")
+                        put("args", JSONObject().apply {
+                            put("code", cleanCode)
+                            put("userEmail", email.lowercase().trim())
+                        })
+                    }
+                    val req = Request.Builder()
+                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                        .post(json.toString().toRequestBody(mediaType))
+                        .build()
+                    val resp = client.newCall(req).execute()
+                    val bodyStr = resp.body?.string() ?: ""
+                    resp.close()
+
+                    if (bodyStr.isNotBlank()) {
+                        val envelope = JSONObject(bodyStr)
+                        val status = envelope.optString("status")
+                        if (status == "success") {
+                            val value = envelope.optJSONObject("value")
+                            if (value != null && value.optBoolean("success", true)) {
+                                pairingSuccess = true
+                                deviceId = value.optString("deviceId", "dev_${System.currentTimeMillis()}")
+                                hostname = value.optString("name", hostname)
+                                err = null
+                            } else {
+                                if (err == null) err = value?.optString("message") ?: "Pairing not confirmed."
+                            }
+                        } else {
+                            if (err == null) {
+                                val errMsg = envelope.optString("errorMessage")
+                                err = if (errMsg.contains("expired", ignoreCase = true)) {
+                                    "Pairing code expired. Run agent for a new code."
+                                } else {
+                                    "Pairing code not found or invalid ($cleanCode)."
+                                }
+                            }
+                        }
+                    }
+                } else if (!pairingSuccess && err == null && email.isBlank()) {
+                    err = "Please log in before pairing a device."
                 }
             } catch (e: Exception) {
                 err = "Network error: ${e.message}"

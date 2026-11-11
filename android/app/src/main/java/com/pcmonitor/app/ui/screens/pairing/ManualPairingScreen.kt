@@ -149,7 +149,10 @@ fun ManualPairingScreen(
             RetroButton(
                 text = "Connect Device",
                 onClick = {
-                    if (code.length == 6) onCodeSubmitted(code)
+                    val normalized = com.pcmonitor.app.util.PairingHelper.normalizeCode(code)
+                    if (com.pcmonitor.app.util.PairingHelper.isValidCode(normalized)) {
+                        onCodeSubmitted(normalized)
+                    }
                 },
                 enabled = code.length == 6,
                 variant = RetroButtonVariant.Secondary,

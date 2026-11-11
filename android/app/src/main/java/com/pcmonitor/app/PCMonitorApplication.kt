@@ -36,7 +36,7 @@ class PCMonitorApplication : Application() {
         NotificationHelper.createNotificationChannels(this)
 
         userPreferencesRepository = UserPreferencesRepository(this)
-        authRepository = MockAuthRepository()
+        authRepository = MockAuthRepository(userPreferencesRepository)
         val devRepo = MockDeviceRepository(userPreferencesRepository, this)
         deviceRepository = devRepo
         alertRepository = MockAlertRepository(devRepo, userPreferencesRepository)

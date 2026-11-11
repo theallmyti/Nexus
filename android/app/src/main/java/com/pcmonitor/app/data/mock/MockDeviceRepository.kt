@@ -136,63 +136,92 @@ class MockDeviceRepository(
         if (activeUserEmail.isBlank()) return
         val mediaType = "application/json; charset=utf-8".toMediaType()
         try {
-            val devicesReqJson = JSONObject().apply {
-                put("path", "devices:getMyDevices")
-                put("args", JSONObject().apply {
-                    put("userEmail", activeUserEmail)
-                })
-            }
-            val dReq = Request.Builder()
-                .url("$CONVEX_BASE_URL/api/query")
-                .post(devicesReqJson.toString().toRequestBody(mediaType))
-                .build()
-            val dResp = withContext(Dispatchers.IO) { httpClient.newCall(dReq).execute() }
-            if (dResp.isSuccessful) {
-                val body = dResp.body?.string()
-                if (!body.isNullOrBlank()) {
-                    val env = JSONObject(body)
-                    val list = env.optJSONArray("value")
-                    if (list != null) {
-                        val newDevices = mutableListOf<Device>()
-                        for (i in 0 until list.length()) {
-                            val item = list.getJSONObject(i)
-                            val id = item.optString("_id")
-                            val name = item.optString("name", item.optString("hostname", "PC"))
-                            val os = item.optString("os", "Windows 11")
-                            val kindStr = item.optString("kind", item.optString("type", "laptop")).lowercase()
-                            val devType = if (kindStr.contains("desktop")) DeviceType.DESKTOP else DeviceType.LAPTOP
-                            val lastSeen = item.optLong("lastSeenAt", item.optLong("lastSeen", 0L))
-                            val isOnline = item.optBoolean("online", false)
+            var list: JSONArray? = null
+            val token = userPreferencesRepository?.getSessionToken()
 
-                            val existing = _devices.value.find { it.id == id }
-                            val stats = if (isOnline) (existing?.hardwareStats ?: createEmptyHardwareStats()) else createEmptyHardwareStats()
-
-                            newDevices.add(
-                                Device(
-                                   id = id,
-                                   name = name,
-                                   os = os,
-                                   type = devType,
-                                   isOnline = isOnline,
-                                   lastSeen = lastSeen,
-                                   hardwareStats = stats,
-                                   ownerId = activeUserEmail
-                                )
-                            )
-                        }
-                        _devices.value = newDevices
-                        if (newDevices.isNotEmpty()) {
-                            if (activeDeviceId.isBlank() || newDevices.none { it.id == activeDeviceId }) {
-                                activeDeviceId = newDevices[0].id
-                            }
-                        } else {
-                            activeDeviceId = ""
-                        }
-                        Log.i(TAG, "Fetched ${newDevices.size} devices for user $activeUserEmail. Active device: $activeDeviceId")
+            if (!token.isNullOrBlank()) {
+                val overviewJson = JSONObject().apply {
+                    put("path", "dashboard:overview")
+                    put("args", JSONObject().apply {
+                        put("token", token)
+                    })
+                }
+                val oReq = Request.Builder()
+                    .url("$CONVEX_BASE_URL/api/query")
+                    .post(overviewJson.toString().toRequestBody(mediaType))
+                    .build()
+                val oResp = withContext(Dispatchers.IO) { httpClient.newCall(oReq).execute() }
+                if (oResp.isSuccessful) {
+                    val body = oResp.body?.string()
+                    if (!body.isNullOrBlank()) {
+                        val env = JSONObject(body)
+                        val valObj = env.optJSONObject("value")
+                        list = valObj?.optJSONArray("devices")
                     }
                 }
+                oResp.close()
             }
-            dResp.close()
+
+            if (list == null) {
+                val devicesReqJson = JSONObject().apply {
+                    put("path", "devices:getMyDevices")
+                    put("args", JSONObject().apply {
+                        put("userEmail", activeUserEmail)
+                    })
+                }
+                val dReq = Request.Builder()
+                    .url("$CONVEX_BASE_URL/api/query")
+                    .post(devicesReqJson.toString().toRequestBody(mediaType))
+                    .build()
+                val dResp = withContext(Dispatchers.IO) { httpClient.newCall(dReq).execute() }
+                if (dResp.isSuccessful) {
+                    val body = dResp.body?.string()
+                    if (!body.isNullOrBlank()) {
+                        val env = JSONObject(body)
+                        list = env.optJSONArray("value")
+                    }
+                }
+                dResp.close()
+            }
+
+            if (list != null) {
+                val newDevices = mutableListOf<Device>()
+                for (i in 0 until list.length()) {
+                    val item = list.getJSONObject(i)
+                    val id = item.optString("id", item.optString("_id"))
+                    val name = item.optString("name", item.optString("hostname", "PC"))
+                    val os = item.optString("os", "Windows 11")
+                    val kindStr = item.optString("kind", item.optString("type", "laptop")).lowercase()
+                    val devType = if (kindStr.contains("desktop")) DeviceType.DESKTOP else DeviceType.LAPTOP
+                    val lastSeen = item.optLong("lastSeenAt", item.optLong("lastSeen", 0L))
+                    val isOnline = item.optBoolean("online", false)
+
+                    val existing = _devices.value.find { it.id == id }
+                    val stats = if (isOnline) (existing?.hardwareStats ?: createEmptyHardwareStats()) else createEmptyHardwareStats()
+
+                    newDevices.add(
+                        Device(
+                            id = id,
+                            name = name,
+                            os = os,
+                            type = devType,
+                            isOnline = isOnline,
+                            lastSeen = lastSeen,
+                            hardwareStats = stats,
+                            ownerId = activeUserEmail
+                        )
+                    )
+                }
+                _devices.value = newDevices
+                if (newDevices.isNotEmpty()) {
+                    if (activeDeviceId.isBlank() || newDevices.none { it.id == activeDeviceId }) {
+                        activeDeviceId = newDevices[0].id
+                    }
+                } else {
+                    activeDeviceId = ""
+                }
+                Log.i(TAG, "Fetched ${newDevices.size} devices for user $activeUserEmail. Active device: $activeDeviceId")
+            }
         } catch (e: Exception) {
             Log.d(TAG, "Device discovery query failed: ${e.message}")
         }
@@ -331,21 +360,35 @@ class MockDeviceRepository(
 
                 if (activeDeviceId.isBlank()) continue
 
-                // Renew live viewing lease every 10s so the agent continuously streams live data
-                if (now - lastViewerPingMs > 10000L) {
+                // Renew live viewing lease every 15s per contract (ANDROID_INTEGRATION_GUIDE Section 5)
+                if (now - lastViewerPingMs > 15000L) {
                     lastViewerPingMs = now
                     try {
-                        val pingJson = JSONObject().apply {
-                            put("path", "devices:setViewer")
-                            put("args", JSONObject().apply {
-                                put("deviceId", activeDeviceId)
-                                put("userEmail", activeUserEmail)
-                            })
+                        val token = userPreferencesRepository?.getSessionToken()
+                        val pingReq = if (!token.isNullOrBlank()) {
+                            val pingJson = JSONObject().apply {
+                                put("path", "dashboard:setViewerAll")
+                                put("args", JSONObject().apply {
+                                    put("token", token)
+                                })
+                            }
+                            Request.Builder()
+                                .url("$CONVEX_BASE_URL/api/mutation")
+                                .post(pingJson.toString().toRequestBody(mediaType))
+                                .build()
+                        } else {
+                            val pingJson = JSONObject().apply {
+                                put("path", "devices:setViewer")
+                                put("args", JSONObject().apply {
+                                    put("deviceId", activeDeviceId)
+                                    put("userEmail", activeUserEmail)
+                                })
+                            }
+                            Request.Builder()
+                                .url("$CONVEX_BASE_URL/api/mutation")
+                                .post(pingJson.toString().toRequestBody(mediaType))
+                                .build()
                         }
-                        val pingReq = Request.Builder()
-                            .url("$CONVEX_BASE_URL/api/mutation")
-                            .post(pingJson.toString().toRequestBody(mediaType))
-                            .build()
                         withContext(Dispatchers.IO) {
                             httpClient.newCall(pingReq).execute().close()
                         }

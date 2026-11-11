@@ -333,9 +333,12 @@ private fun LiveCameraPreview(
                             for (b in barcodes) {
                                 val raw = b.rawValue ?: continue
                                 if (raw.isNotBlank() && !isScanned) {
-                                    isScanned = true
-                                    onCodeScanned(raw)
-                                    break
+                                    val normalized = com.pcmonitor.app.util.PairingHelper.normalizeCode(raw)
+                                    if (com.pcmonitor.app.util.PairingHelper.isValidCode(normalized)) {
+                                        isScanned = true
+                                        onCodeScanned(normalized)
+                                        break
+                                    }
                                 }
                             }
                         }

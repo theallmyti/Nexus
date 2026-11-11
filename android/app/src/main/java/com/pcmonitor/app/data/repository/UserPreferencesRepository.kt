@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -38,6 +40,39 @@ class UserPreferencesRepository(private val context: Context) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
+
+    private val encryptedPrefs by lazy {
+        try {
+            val keyGenParameterSpec = androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
+            val masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(keyGenParameterSpec)
+            androidx.security.crypto.EncryptedSharedPreferences.create(
+                "nexus_encrypted_session",
+                masterKeyAlias,
+                context,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            context.getSharedPreferences("nexus_session_fallback", Context.MODE_PRIVATE)
+        }
+    }
+
+    private val _sessionToken = MutableStateFlow<String?>(encryptedPrefs.getString("auth_token", null))
+    val sessionToken: Flow<String?> = _sessionToken.asStateFlow()
+
+    fun getSessionToken(): String? {
+        return encryptedPrefs.getString("auth_token", null)
+    }
+
+    fun saveSessionToken(token: String) {
+        encryptedPrefs.edit().putString("auth_token", token).apply()
+        _sessionToken.value = token
+    }
+
+    fun clearSessionToken() {
+        encryptedPrefs.edit().remove("auth_token").apply()
+        _sessionToken.value = null
+    }
 
     companion object {
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -124,6 +159,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun clearUserInfo() {
+        clearSessionToken()
         context.dataStore.edit { prefs ->
             prefs.remove(USER_ID)
             prefs.remove(USER_NAME)

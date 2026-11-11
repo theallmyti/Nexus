@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -53,10 +54,20 @@ import com.pcmonitor.app.ui.screens.thresholds.ThresholdSettingsViewModel
 import com.pcmonitor.app.ui.theme.DeepNavy
 
 @Composable
-fun PCMonitorNavGraph() {
+fun PCMonitorNavGraph(
+    initialPairingCode: String? = null,
+    onPairingCodeConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val app = context.applicationContext as PCMonitorApplication
+
+    LaunchedEffect(initialPairingCode) {
+        if (!initialPairingCode.isNullOrBlank()) {
+            navController.navigate(Screen.PairingProgress.createRoute(initialPairingCode))
+            onPairingCodeConsumed()
+        }
+    }
 
     NavHost(
         navController = navController,
