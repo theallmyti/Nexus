@@ -9,3 +9,7 @@ convex_url = "https://YOUR-DEPLOYMENT.convex.cloud"
 
 # Seconds between live pushes while a viewer is present (FR-31).
 live_interval_secs = 1
+
+# Activity data: top process names (by memory) and boot/sleep/wake times.
+# Shown on your dashboard only. Set to false to stop sending it. See docs/PRIVACY.md.
+# share_activity = true

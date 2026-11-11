@@ -198,7 +198,7 @@ fun PairingProgressScreen(
                             if (err == null) {
                                 val errMsg = envelope.optString("errorMessage")
                                 err = if (errMsg.contains("expired", ignoreCase = true)) {
-                                    "Pairing code expired. Run agent for a new code."
+                                    "Pairing code expired. Run 'nexus pair' on PC for a new code."
                                 } else {
                                     "Pairing code not found or invalid ($cleanCode)."
                                 }

@@ -20,6 +20,14 @@ pub struct Config {
     /// Shared privately between the two of us, never in git (docs/Security.md §7).
     #[serde(default)]
     pub registration_secret: Option<String>,
+    /// Send top process names and boot/sleep/wake times (docs/PRIVACY.md §2).
+    /// On by default; set `share_activity = false` to stop sending them.
+    #[serde(default = "default_true")]
+    pub share_activity: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug)]
@@ -96,6 +104,18 @@ mod tests {
         assert_eq!(cfg.convex_url, "https://YOUR-DEPLOYMENT.convex.cloud");
         assert_eq!(cfg.live_interval_secs, 1);
         assert_eq!(cfg.device_secret, None);
+        assert!(
+            cfg.share_activity,
+            "activity sharing is on unless turned off"
+        );
+    }
+
+    #[test]
+    fn share_activity_can_be_turned_off() {
+        let cfg: Config =
+            toml::from_str("convex_url = \"x\"\nlive_interval_secs = 1\nshare_activity = false")
+                .expect("config must parse");
+        assert!(!cfg.share_activity);
     }
 
     #[test]

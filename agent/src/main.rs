@@ -1049,7 +1049,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
 
         if live {
             // Processes only while someone is watching, every 5 s (keeps idle CPU low).
-            if top.is_empty() || tick % PROCESS_EVERY == 1 {
+            if config.share_activity && (top.is_empty() || tick % PROCESS_EVERY == 1) {
                 collectors::refresh_processes(&mut sys);
                 top = collectors::top_processes(&sys, 5);
             }
@@ -1073,7 +1073,9 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                     ("swapTotal", num(ram.swap_total)),
                 ]),
             );
-            args.insert("topProcs".to_string(), procs_value(&top));
+            if config.share_activity {
+                args.insert("topProcs".to_string(), procs_value(&top));
+            }
             if !drives.is_empty() {
                 args.insert("disks".to_string(), drives_live(&drives));
             }
@@ -1097,7 +1099,9 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                     .collect();
                 usage_obj.insert("events".to_string(), Value::Array(evts));
             }
-            args.insert("usage".to_string(), Value::Object(usage_obj));
+            if config.share_activity {
+                args.insert("usage".to_string(), Value::Object(usage_obj));
+            }
             if let Some(t) = cpu_t {
                 args.insert("cpuTemp".to_string(), num(t));
             }

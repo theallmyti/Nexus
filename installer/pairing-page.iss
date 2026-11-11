@@ -1,5 +1,5 @@
-// "Pair this computer" wizard page, included in [Code] by pc-monitor-agent.iss.
-// Runs `pc-monitor-agent pair --ui <dir> <config>` hidden; every second it reads <dir>\status.txt
+// "Pair this computer" wizard page, included in [Code] by nexus.iss.
+// Runs `nexus pair --ui <dir> <config>` hidden; every second it reads <dir>\status.txt
 // and shows the QR code image (<dir>\qr.bmp), the code, a countdown and the state.
 // Timer: SetTimer + CreateCallback, as in Inno Setup's Examples\CodeDll.iss.
 

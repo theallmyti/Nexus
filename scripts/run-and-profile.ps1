@@ -1,7 +1,7 @@
 # run-and-profile.ps1
-# Runs pc-monitor-agent and pc-monitor-agent tray, samples RAM & CPU every 10 seconds for 5 minutes (30 samples).
+# Runs nexus and nexus tray, samples RAM & CPU every 10 seconds for 5 minutes (30 samples).
 
-$bin = "D:\Random project\MS\agent\target\release\pc-monitor-agent.exe"
+$bin = "D:\Random project\MS\agent\target\release\nexus.exe"
 $config = "C:\ProgramData\PCMonitor\config.toml"
 
 Write-Host "Starting Nexus Agent..."

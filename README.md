@@ -179,12 +179,12 @@ A device counts as **online** when its last push is under 3 minutes old.
 | `cputemp.rs` | Windows CPU package temperature through the PawnIO driver (AMD Zen and Intel) |
 | `battery.rs` | Charge, charging state, health, power draw and cycle count |
 | `dashboard.rs` | Container counts from the home-server dashboard, so the agent never needs the Docker socket |
-| `service.rs` | Runs as a Windows service; config and log live in `%ProgramData%\PCMonitor` |
+| `service.rs` | Runs as a Windows service; config and log live in `%ProgramData%\Nexus` |
 | `logging.rs` | Logs to the terminal, or to a file that rotates at 5 MB when running as a service |
 
 Design notes:
 
-- **GPU in a helper process.** NVIDIA's library adds about 17 MB and can't be unloaded on Windows. The agent never loads it itself: it runs a copy of itself (`pc-monitor-agent gpu`) that streams readings while live and takes one-shot readings every 30 s while idle.
+- **GPU in a helper process.** NVIDIA's library adds about 17 MB and can't be unloaded on Windows. The agent never loads it itself: it runs a copy of itself (`nexus gpu`) that streams readings while live and takes one-shot readings every 30 s while idle.
 - **Windows modes.** In *no-driver* mode the agent runs as a normal user and skips CPU temperature. In *full* mode it runs as a service with the PawnIO driver and reads the CPU package temperature straight from the processor.
 - **Graceful degradation.** No NVIDIA driver, no battery or no temperature sensors means that data is left out. The rest keeps running, and the agent reports what it can read as `capabilities` when it registers.
 
@@ -250,7 +250,7 @@ erDiagram
 Install the agent on your computers and link them to your account:
 
 #### Windows
-1. Run `dist\pc-monitor-agent-setup-0.2.1.exe` (or build from `installer\pc-monitor-agent.iss`).
+1. Run `dist\nexus-setup-0.2.1.exe` (or build from `installer\nexus.iss`).
 2. The setup wizard displays a pairing QR code and 6-character code.
 3. **If you have the Nexus app:** Scan the QR code using Google Lens, your phone camera, or the in-app scanner to pair instantly.
 4. **If you don't have the app yet:** Scanning the QR code automatically opens the download page with a direct link to the latest [Nexus Android APK on GitHub Releases](https://github.com/theallmyti/Nexus/releases/latest). Install the app, sign in, and confirm the code.
@@ -259,13 +259,13 @@ Install the agent on your computers and link them to your account:
 1. Download the universal static installer for your architecture from `dist/`:
    ```sh
    # x86-64:
-   sudo sh pc-monitor-agent-0.2.1-linux-x86_64.run
+   sudo sh nexus-0.2.1-linux-x86_64.run
 
    # ARM64 / Raspberry Pi:
-   sudo sh pc-monitor-agent-0.2.1-linux-aarch64.run
+   sudo sh nexus-0.2.1-linux-aarch64.run
    ```
 2. Scan the terminal QR code with your phone camera or Google Lens to pair, or type the 6-character code into the app.
-3. To uninstall at any time: `sudo sh /opt/pc-monitor/uninstall.sh` (or `sudo sh dist/pc-monitor-agent-uninstall.sh`).
+3. To uninstall at any time: `sudo sh /opt/nexus/uninstall.sh` (or `sudo sh dist/nexus-uninstall.sh`).
 
 ### Agent Development
 
