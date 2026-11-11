@@ -61,8 +61,7 @@ Common verification commands:
 
 ### Task 8: Ownership everywhere; remove spike secrets
 - [x] `devices.list/get/rename/remove/setViewer` require a session and check `device.userId` (T-12, T-13)
-- [ ] Registration secret and dashboard read token removed; dashboard signs in like the app
-  - 4 Nov: read token removed, site signs in. `agent:register` (team secret) stays until the Pi runs the new agent and is paired.
+- [x] Registration secret and dashboard read token removed; legacy `agent:register` retired and all devices use pairing exclusively
 - [ ] Spike data purged (open question 3)
 - **Depends on:** 7, open questions 2–3 · **Size:** M
 

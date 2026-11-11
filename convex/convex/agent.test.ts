@@ -21,11 +21,14 @@ afterEach(() => {
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const deviceId = await t.mutation(api.agent.register, {
-    registrationSecret: "team-secret",
-    secretHash: HASH,
-    name: "test-pc",
-  });
+  const deviceId = await t.run((ctx) =>
+    ctx.db.insert("devices", {
+      secretHash: HASH,
+      name: "test-pc",
+      lastSeenAt: Date.now(),
+      isFake: false,
+    }),
+  );
   return { t, deviceId };
 }
 
@@ -121,8 +124,8 @@ test("pushLatest updates the latest row and writes no history", async () => {
   expect(await t.run((ctx) => ctx.db.query("summaries").collect())).toHaveLength(0);
 });
 
-test("register stores capabilities and agent version", async () => {
-  const t = convexTest(schema, modules);
+test("hello stores capabilities and agent version", async () => {
+  const { t, deviceId } = await setup();
   const caps = {
     hasBattery: true,
     hasNvidiaGpu: true,
@@ -131,16 +134,14 @@ test("register stores capabilities and agent version", async () => {
     isPi: false,
     drives: [{ name: "C:", totalGB: 476 }],
   };
-  const id = await t.mutation(api.agent.register, {
-    registrationSecret: "team-secret",
+  await t.mutation(api.agent.hello, {
     secretHash: HASH,
-    name: "test-pc",
     capabilities: caps,
-    agentVersion: "0.1.0",
+    agentVersion: "0.2.1",
   });
-  const device = await t.run((ctx) => ctx.db.get(id));
+  const device = await t.run((ctx) => ctx.db.get(deviceId));
   expect(device?.capabilities).toEqual(caps);
-  expect(device?.agentVersion).toBe("0.1.0");
+  expect(device?.agentVersion).toBe("0.2.1");
 });
 
 test("pushLatest stores per-core use, RAM detail, top processes, drives and uptime", async () => {

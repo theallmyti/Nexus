@@ -1,4 +1,5 @@
-# Builds the Linux agent for x86-64 and ARM64 (Raspberry Pi) on every push to main.
+# Builds the universal static Linux agent for x86-64 and ARM64 (Raspberry Pi) on every push to main.
+# Statically linked with musl and vendored OpenSSL so it runs on every Linux distro without glibc dependency.
 # No secrets: the Convex URL is added later, when the .run installer is packaged locally
 # (installer/linux/make-run.sh). Download: gh run download -n pc-monitor-agent-linux-<arch>
 name: Linux build
@@ -20,22 +21,29 @@ jobs:
         include:
           - arch: x86_64
             os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
           - arch: aarch64
             os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: agent
     steps:
       - uses: actions/checkout@v5
+      - name: Install musl build tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent
-          key: ${{ matrix.arch }}
-      - run: cargo build --release --locked
+          key: ${{ matrix.arch }}-musl
+      - run: cargo build --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: pc-monitor-agent-linux-${{ matrix.arch }}
-          path: agent/target/release/pc-monitor-agent
+          path: agent/target/${{ matrix.target }}/release/pc-monitor-agent
           retention-days: 30
+

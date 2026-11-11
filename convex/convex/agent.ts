@@ -1,10 +1,8 @@
 // Agent endpoints (docs/Architecture.md §3.1, owner: Aditya).
 // Auth:
-//  - register: needs the team registration secret (env var AGENT_REGISTRATION_SECRET).
-//    Only the two of us know it. Replaced by pairing in week 2 (docs/Flow.md §3).
-//  - pushLatest, pushSummary, watchViewer: the agent sends SHA-256(device secret);
+//  - hello, pushLatest, pushSummary, watchViewer, unpair: the agent sends SHA-256(device secret);
 //    Convex compares the hash (docs/Flow.md §3, docs/Security.md §6).
-// No public read endpoint: the app reads through pairing in week 2.
+// Devices are enrolled exclusively through the pairing flow (pairing.ts).
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { deviceBySecretHash, removeDeviceData } from "./model";
@@ -58,38 +56,6 @@ export const unpair = mutation({
     }
     await removeDeviceData(ctx, device);
     return true;
-  },
-});
-
-// Legacy: registration with the team secret, kept until every agent uses pairing (Task 8).
-export const register = mutation({
-  args: {
-    registrationSecret: v.string(),
-    secretHash: v.string(),
-    name: v.string(),
-    capabilities: v.optional(capabilities),
-    agentVersion: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const expected = process.env.AGENT_REGISTRATION_SECRET;
-    if (!expected || args.registrationSecret !== expected) {
-      throw new ConvexError("not authorized");
-    }
-    // Shows in the Convex logs; when this stops appearing, register can be deleted (migrations.ts).
-    console.warn(`legacy agent:register used by "${args.name}" (agent ${args.agentVersion ?? "unknown"})`);
-    const now = Date.now();
-    const report = { name: args.name, capabilities: args.capabilities, agentVersion: args.agentVersion };
-    const existing = await deviceBySecretHash(ctx, args.secretHash);
-    if (existing) {
-      await ctx.db.patch(existing._id, { ...report, lastSeenAt: now });
-      return existing._id;
-    }
-    return await ctx.db.insert("devices", {
-      ...report,
-      secretHash: args.secretHash,
-      lastSeenAt: now,
-      isFake: true,
-    });
   },
 });
 
