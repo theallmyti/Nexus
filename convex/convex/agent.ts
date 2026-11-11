@@ -14,6 +14,11 @@ import { battery, capabilities, collectorStatus, driveLive, driveSummary, ramDet
 // docs/Security.md §2: at most one summary per 50 s per device.
 const SUMMARY_MIN_GAP_MS = 50_000;
 
+function validateSecretHash(secretHash: string) {
+  if (!/^[0-9a-f]{64}$/.test(secretHash)) {
+    throw new ConvexError("invalid device key");
+  }
+}
 
 // Called at every agent start once the device is paired: refreshes what it reports (FR-15).
 // Never creates a device; pairing does that.
@@ -24,6 +29,7 @@ export const hello = mutation({
     agentVersion: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    validateSecretHash(args.secretHash);
     if (isUnsupported(args.agentVersion)) {
       throw new ConvexError(
         `This agent (${args.agentVersion}) is too old. Install version ${LATEST_AGENT_VERSION} from Nexus's releases.`,
@@ -33,9 +39,24 @@ export const hello = mutation({
     if (!device) {
       throw new ConvexError("not paired");
     }
+    const sanitizedVersion = args.agentVersion
+      ? args.agentVersion.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 32)
+      : undefined;
+    let sanitizedCapabilities = args.capabilities;
+    if (sanitizedCapabilities) {
+      if (sanitizedCapabilities.drives && sanitizedCapabilities.drives.length > 64) {
+        sanitizedCapabilities = { ...sanitizedCapabilities, drives: sanitizedCapabilities.drives.slice(0, 64) };
+      }
+      if (sanitizedCapabilities.cpuModel) {
+        sanitizedCapabilities = {
+          ...sanitizedCapabilities,
+          cpuModel: sanitizedCapabilities.cpuModel.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 128),
+        };
+      }
+    }
     await ctx.db.patch(device._id, {
-      capabilities: args.capabilities,
-      agentVersion: args.agentVersion,
+      capabilities: sanitizedCapabilities,
+      agentVersion: sanitizedVersion,
       lastSeenAt: Date.now(),
     });
     // owned = linked to an account. Devices paired before accounts existed have no owner and
@@ -50,6 +71,7 @@ export const hello = mutation({
 export const unpair = mutation({
   args: { secretHash: v.string() },
   handler: async (ctx, args) => {
+    validateSecretHash(args.secretHash);
     const device = await deviceBySecretHash(ctx, args.secretHash);
     if (!device) {
       return false;
@@ -88,6 +110,7 @@ export const pushLatest = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    validateSecretHash(args.secretHash);
     // FR-28: reject impossible values.
     if (args.cpuUtil < 0 || args.cpuUtil > 100 || args.ramUsedPct < 0 || args.ramUsedPct > 100) {
       throw new ConvexError("value out of range");
@@ -98,11 +121,36 @@ export const pushLatest = mutation({
     if (args.gpu && (args.gpu.temp < 0 || args.gpu.temp > 125 || args.gpu.util < 0 || args.gpu.util > 100)) {
       throw new ConvexError("gpu value out of range");
     }
-    if (args.perCoreUtil?.some((p) => p < 0 || p > 100)) {
+    if (args.perCoreUtil && (args.perCoreUtil.length > 512 || args.perCoreUtil.some((p) => p < 0 || p > 100))) {
       throw new ConvexError("per-core value out of range");
     }
-    if (args.disks?.some((d) => d.freeGB < 0 || d.freeGB > d.totalGB)) {
+    if (args.clocks && (args.clocks.length > 512 || args.clocks.some((c) => c < 0 || c > 20_000))) {
+      throw new ConvexError("clocks value out of range");
+    }
+    if (args.disks && (args.disks.length > 64 || args.disks.some((d) => d.freeGB < 0 || d.freeGB > d.totalGB))) {
       throw new ConvexError("disk value out of range");
+    }
+    if (args.topProcs && (args.topProcs.length > 100 || args.topProcs.some((p) => p.mb < 0 || p.name.length > 256))) {
+      throw new ConvexError("process value out of range");
+    }
+    if (
+      args.ram &&
+      (args.ram.used < 0 ||
+        args.ram.free < 0 ||
+        args.ram.total < 0 ||
+        args.ram.swapUsed < 0 ||
+        args.ram.swapTotal < 0)
+    ) {
+      throw new ConvexError("ram value out of range");
+    }
+    if (
+      args.docker &&
+      (args.docker.running < 0 || args.docker.stopped < 0 || args.docker.errored < 0)
+    ) {
+      throw new ConvexError("docker count out of range");
+    }
+    if (args.uptimeSec !== undefined && (args.uptimeSec < 0 || !Number.isFinite(args.uptimeSec))) {
+      throw new ConvexError("uptime value out of range");
     }
     if (args.battery && (args.battery.pct < 0 || args.battery.pct > 100)) {
       throw new ConvexError("battery value out of range");
@@ -167,7 +215,11 @@ type SummaryFields = Infer<typeof summaryValidator>;
 
 // FR-28: reject impossible values.
 function checkSummary(summary: SummaryFields) {
-  if (summary.disks?.some((d) => d.freeGB < 0 || d.freePct < 0 || d.freePct > 100)) {
+  if (
+    summary.disks &&
+    (summary.disks.length > 64 ||
+      summary.disks.some((d) => d.freeGB < 0 || d.freePct < 0 || d.freePct > 100))
+  ) {
     throw new ConvexError("disk value out of range");
   }
   const percents = [
@@ -206,6 +258,7 @@ async function storeSummary(ctx: MutationCtx, deviceId: Id<"devices">, minuteTs:
 export const pushSummary = mutation({
   args: { secretHash: v.string(), minuteTs: v.number(), ...summaryFields },
   handler: async (ctx, { secretHash, minuteTs: _agentMinute, ...summary }) => {
+    validateSecretHash(secretHash);
     checkSummary(summary);
     const device = await deviceBySecretHash(ctx, secretHash);
     if (!device) {
@@ -236,6 +289,7 @@ export const pushSummaries = mutation({
     summaries: v.array(v.object({ minuteTs: v.number(), ...summaryFields })),
   },
   handler: async (ctx, args) => {
+    validateSecretHash(args.secretHash);
     if (args.summaries.length === 0 || args.summaries.length > MAX_BATCH) {
       throw new ConvexError(`send 1 to ${MAX_BATCH} summaries per call`);
     }
@@ -277,6 +331,7 @@ export const pushSummaries = mutation({
 export const watchViewer = query({
   args: { secretHash: v.string() },
   handler: async (ctx, args) => {
+    validateSecretHash(args.secretHash);
     const device = await deviceBySecretHash(ctx, args.secretHash);
     if (!device) {
       throw new ConvexError("unknown device");

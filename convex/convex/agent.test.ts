@@ -326,4 +326,27 @@ describe("pushSummaries (offline backlog)", () => {
       t.mutation(api.agent.pushSummaries, { secretHash: "b".repeat(64), sentAt: Date.now(), summaries: [one] }),
     ).rejects.toThrow(/unknown device/);
   });
+
+  test("validates secretHash format and telemetry array/value bounds", async () => {
+    const { t } = await setup();
+    await expect(t.mutation(api.agent.hello, { secretHash: "invalid-hash" })).rejects.toThrow(/invalid device key/);
+    await expect(
+      t.mutation(api.agent.pushLatest, {
+        secretHash: HASH,
+        ts: Date.now(),
+        cpuUtil: 10,
+        ramUsedPct: 20,
+        docker: { running: -1, stopped: 0, errored: 0 },
+      }),
+    ).rejects.toThrow(/docker count out of range/);
+    await expect(
+      t.mutation(api.agent.pushLatest, {
+        secretHash: HASH,
+        ts: Date.now(),
+        cpuUtil: 10,
+        ramUsedPct: 20,
+        topProcs: [{ name: "proc", mb: -10 }],
+      }),
+    ).rejects.toThrow(/process value out of range/);
+  });
 });

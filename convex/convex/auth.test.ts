@@ -73,3 +73,12 @@ test("sign out ends the session; idle sessions expire after 30 days (FR-02, FR-0
   await t.run((ctx) => ctx.db.patch(session._id, { lastUsedAt: Date.now() - 30 * 24 * 60 * 60 * 1000 - 1 }));
   expect(await t.query(api.auth.me, { token: second.token })).toBeNull();
 });
+
+test("sign up and sign in reject excessive length email and password to prevent scrypt DoS", async () => {
+  const t = convexTest(schema, modules);
+  const hugePassword = "a".repeat(257);
+  const hugeEmail = "a".repeat(250) + "@example.com";
+  await expect(t.action(api.auth.signUp, { email: EMAIL, password: hugePassword })).rejects.toThrow(/at most 256/);
+  await expect(t.action(api.auth.signUp, { email: hugeEmail, password: PASSWORD })).rejects.toThrow(/valid email/);
+  await expect(t.action(api.auth.signIn, { email: EMAIL, password: hugePassword })).rejects.toThrow(/Wrong email or password/);
+});

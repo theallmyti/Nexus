@@ -20,7 +20,8 @@ export default defineSchema({
     lastUsedAt: v.number(), // expires after 30 days without use (FR-02)
   })
     .index("by_tokenHash", ["tokenHash"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_lastUsedAt", ["lastUsedAt"]),
 
   // Failed sign-ins, for the 5 per 15 min limit (FR-04).
   loginAttempts: defineTable({

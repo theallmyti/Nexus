@@ -57,6 +57,12 @@ export const overview = query({
 export const history = query({
   args: { token: v.string(), deviceId: v.id("devices"), sinceMs: v.number(), untilMs: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    if (!Number.isFinite(args.sinceMs) || args.sinceMs < 0) {
+      throw new ConvexError("invalid sinceMs");
+    }
+    if (args.untilMs !== undefined && (!Number.isFinite(args.untilMs) || args.untilMs < args.sinceMs)) {
+      throw new ConvexError("invalid untilMs");
+    }
     const user = await requireUser(ctx, args.token);
     await ownedDevice(ctx, user, args.deviceId);
     const { untilMs } = args;
@@ -103,7 +109,7 @@ export const renameDevice = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     await ownedDevice(ctx, user, args.deviceId);
-    const name = args.name.trim();
+    const name = args.name.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
     if (name.length < 1 || name.length > 64) {
       throw new ConvexError("Use 1 to 64 characters for the name.");
     }
@@ -145,6 +151,8 @@ export const checkPairingCode = mutation({
   },
 });
 
+const MAX_DEVICES_PER_USER = 50;
+
 // The signed-in user who confirms becomes the device's owner (FR-11). A computer that is
 // paired again (new owner, or a device from before accounts) moves to the confirming user.
 export const confirmPairing = mutation({
@@ -165,11 +173,21 @@ export const confirmPairing = mutation({
     }
     const now = Date.now();
     const existing = await deviceBySecretHash(ctx, r.secretHash);
-    let deviceId;
     if (existing) {
       if (existing.userId && existing.userId !== user._id) {
         throw new ConvexError("device already paired to another account");
       }
+    } else {
+      const userDevices = await ctx.db
+        .query("devices")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      if (userDevices.length >= MAX_DEVICES_PER_USER) {
+        throw new ConvexError(`Device limit reached (max ${MAX_DEVICES_PER_USER} devices per account).`);
+      }
+    }
+    let deviceId;
+    if (existing) {
       await ctx.db.patch(existing._id, { userId: user._id, isFake: false });
       deviceId = existing._id;
     } else {

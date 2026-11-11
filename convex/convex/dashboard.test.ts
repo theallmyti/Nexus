@@ -86,3 +86,17 @@ test("history can end before now, and setViewerAll marks only the caller's devic
   expect(mine?.viewerUntil).toBeGreaterThan(now);
   expect(theirs?.viewerUntil).toBeUndefined();
 });
+
+test("renameDevice strips control characters and history validates range bounds", async () => {
+  const t = convexTest(schema, modules);
+  const hash = "a".repeat(64);
+  const { token, deviceId } = await userWithDevice(t, "aditya@example.com", hash);
+
+  await t.mutation(api.dashboard.renameDevice, { token, deviceId, name: "Rig\u0000\u001f " });
+  expect((await t.run((ctx) => ctx.db.get(deviceId)))?.name).toBe("Rig");
+
+  await expect(t.query(api.dashboard.history, { token, deviceId, sinceMs: -1 })).rejects.toThrow(/invalid sinceMs/);
+  await expect(t.query(api.dashboard.history, { token, deviceId, sinceMs: 1000, untilMs: 500 })).rejects.toThrow(
+    /invalid untilMs/,
+  );
+});

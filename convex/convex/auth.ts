@@ -10,6 +10,8 @@ import { MAX_ATTEMPTS, SIGNUP_LIMITED } from "./users";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8; // FR-01
+const MAX_PASSWORD = 256;
+const MAX_EMAIL = 255;
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -19,11 +21,14 @@ export const signUp = action({
   args: { email: v.string(), password: v.string() },
   handler: async (ctx, args): Promise<{ token: string }> => {
     const email = normalizeEmail(args.email);
-    if (!EMAIL.test(email)) {
+    if (email.length > MAX_EMAIL || !EMAIL.test(email)) {
       throw new ConvexError("Enter a valid email address.");
     }
     if (args.password.length < MIN_PASSWORD) {
       throw new ConvexError(`Use at least ${MIN_PASSWORD} characters for the password.`);
+    }
+    if (args.password.length > MAX_PASSWORD) {
+      throw new ConvexError(`Use at most ${MAX_PASSWORD} characters for the password.`);
     }
     if (await ctx.runQuery(internal.users.signupLimited, {})) {
       throw new ConvexError(SIGNUP_LIMITED);
@@ -42,6 +47,9 @@ export const signIn = action({
   args: { email: v.string(), password: v.string() },
   handler: async (ctx, args): Promise<{ token: string }> => {
     const email = normalizeEmail(args.email);
+    if (email.length > MAX_EMAIL || args.password.length > MAX_PASSWORD) {
+      throw new ConvexError("Wrong email or password.");
+    }
     if ((await ctx.runQuery(internal.users.recentAttempts, { email })) >= MAX_ATTEMPTS) {
       throw new ConvexError("Too many attempts. Try again in 15 minutes.");
     }

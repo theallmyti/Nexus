@@ -85,11 +85,16 @@ test("the daily cleanup deletes old limit rows and expired codes, and keeps curr
     const base = { secretHash: "c".repeat(64), name: "pc", os: "windows", status: "pending" as const };
     await ctx.db.insert("pairingRequests", { ...base, code: "AAAAAA", expiresAt: now - 3_600_001 });
     await ctx.db.insert("pairingRequests", { ...base, code: "BBBBBB", expiresAt: now + 60_000 });
+    const userId = await ctx.db.insert("users", { email: "s@example.com", passwordHash: "h", createdAt: now, setupDone: true });
+    await ctx.db.insert("sessions", { userId, tokenHash: "old_sess", lastUsedAt: now - 31 * day });
+    await ctx.db.insert("sessions", { userId, tokenHash: "cur_sess", lastUsedAt: now });
   });
 
-  expect(await t.mutation(internal.cleanup.deleteExpired, {})).toEqual({ events: 2, attempts: 1, codes: 1 });
+  expect(await t.mutation(internal.cleanup.deleteExpired, {})).toEqual({ events: 2, attempts: 1, codes: 1, sessions: 1 });
   const codes = await t.run((ctx) => ctx.db.query("pairingRequests").collect());
   expect(codes.map((c) => c.code)).toEqual(["BBBBBB"]);
   expect(await t.run((ctx) => ctx.db.query("rateEvents").collect())).toHaveLength(1);
   expect(await t.run((ctx) => ctx.db.query("loginAttempts").collect())).toHaveLength(1);
+  const remainingSessions = await t.run((ctx) => ctx.db.query("sessions").collect());
+  expect(remainingSessions.map((s) => s.tokenHash)).toEqual(["cur_sess"]);
 });
