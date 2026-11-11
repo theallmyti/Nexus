@@ -291,7 +291,9 @@ fn update_tray(hwnd: HWND) {
                 "Nexus Agent: Paused\nLogging paused indefinitely".to_string()
             }
         } else if let Some(s) = status {
-            if s.state == "unpaired" {
+            if s.state == "stopped" {
+                "Nexus Agent: Stopped\nService is idle".to_string()
+            } else if s.state == "unpaired" {
                 "Nexus Agent: Unpaired\nRight-click to pair or open dashboard".to_string()
             } else if s.state == "connecting" {
                 "Nexus Agent: Connecting...".to_string()
@@ -341,6 +343,7 @@ fn show_context_menu(hwnd: HWND) {
     let status = control::read_status(&data_dir);
     let is_paused = ctrl.paused;
     let is_unpaired = status.as_ref().is_some_and(|s| s.state == "unpaired");
+    let is_stopped = status.as_ref().is_some_and(|s| s.state == "stopped");
 
     unsafe {
         let hmenu = CreatePopupMenu();
@@ -410,6 +413,8 @@ fn show_context_menu(hwnd: HWND) {
             } else {
                 "Status: ⏸ Paused indefinitely".to_string()
             }
+        } else if is_stopped {
+            "Status: ⏹ Stopped".to_string()
         } else if is_unpaired {
             "Status: ⚠ Unpaired".to_string()
         } else {
@@ -433,14 +438,19 @@ fn show_context_menu(hwnd: HWND) {
             AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
         }
 
+        let pause_flags = if is_stopped {
+            MF_POPUP | MF_DISABLED | MF_GRAYED
+        } else {
+            MF_POPUP
+        };
         AppendMenuW(
             hmenu,
-            MF_POPUP,
+            pause_flags,
             hsubmenu as usize,
             to_wide("Pause Monitoring").as_ptr(),
         );
 
-        let resume_flags = if is_paused {
+        let resume_flags = if is_paused && !is_stopped {
             MF_STRING
         } else {
             MF_STRING | MF_DISABLED | MF_GRAYED
@@ -467,11 +477,16 @@ fn show_context_menu(hwnd: HWND) {
         );
 
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
+        let restart_label = if is_stopped {
+            "Start Service"
+        } else {
+            "Restart Service"
+        };
         AppendMenuW(
             hmenu,
             MF_STRING,
             ID_RESTART_SERVICE,
-            to_wide("Restart Service").as_ptr(),
+            to_wide(restart_label).as_ptr(),
         );
         AppendMenuW(hmenu, MF_STRING, ID_EXIT, to_wide("Exit Tray").as_ptr());
 
@@ -579,7 +594,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                         "-WindowStyle",
                         "Hidden",
                         "-Command",
-                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent'",
+                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service PCMonitorAgent -ErrorAction SilentlyContinue'",
                     ])
                     .status();
             });

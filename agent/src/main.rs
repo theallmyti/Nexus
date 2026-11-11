@@ -393,6 +393,81 @@ fn watch_viewer(mut client: ConvexClient, secret_hash: String, viewer_until: Arc
     });
 }
 
+fn print_help() {
+    println!("Nexus PC Monitor Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!();
+    println!("Usage:");
+    println!("  pc-monitor-agent [COMMAND | CONFIG_PATH]");
+    println!();
+    println!("Commands:");
+    println!("  status         Show current agent service status and live metrics");
+    println!("  pair           Pair this machine with your Nexus dashboard account");
+    println!("  unpair         Remove device secret and unlink from Nexus");
+    println!("  sensors        List all detected hardware sensors (temperatures, clocks)");
+    println!("  help, --help   Show this help message");
+    println!();
+    #[cfg(windows)]
+    {
+        println!("Windows-only commands:");
+        println!("  service        Run as Windows Service (managed by Service Control Manager)");
+        println!("  tray           Launch background system tray icon");
+        println!();
+    }
+    println!(
+        "If no command is specified, runs as a foreground agent using CONFIG_PATH (default: config.toml)."
+    );
+}
+
+fn print_status() {
+    println!("Nexus PC Monitor Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!("-----------------------------");
+
+    #[cfg(windows)]
+    let data_dir = service::data_dir();
+    #[cfg(not(windows))]
+    let data_dir = PathBuf::from("/var/lib/pc-monitor-agent");
+
+    let dir = if data_dir.join("status.json").exists() {
+        data_dir
+    } else {
+        PathBuf::from(".")
+    };
+
+    match control::read_status(&dir) {
+        Some(s) => {
+            let now = usage::now_wall_secs();
+            let age = now.saturating_sub(s.last_tick);
+            let state_display = match s.state.as_str() {
+                "active" if age > 15 => format!("Stalled (last tick {age}s ago)"),
+                "active" => "Active (logging)".to_string(),
+                "paused" => match s.paused_until {
+                    Some(u) if u > now => format!("Paused (resumes in ~{}m)", (u - now) / 60 + 1),
+                    _ => "Paused indefinitely".to_string(),
+                },
+                "unpaired" => "Unpaired (run `pc-monitor-agent pair`)".to_string(),
+                "connecting" => "Connecting...".to_string(),
+                "stopped" => "Stopped (service idle)".to_string(),
+                other => other.to_string(),
+            };
+            println!("Status:       {state_display}");
+            println!("CPU Usage:    {:.1}%", s.cpu_util);
+            println!("RAM Usage:    {:.1}%", s.ram_pct);
+            if let Some(t) = s.temp_c {
+                println!("CPU Temp:     {t:.1} °C");
+            }
+            if let Some(u) = s.convex_url {
+                println!("Backend:      {u}");
+            }
+            println!("Last Update:  {age}s ago");
+            println!("Data Dir:     {}", dir.display());
+        }
+        None => {
+            println!("Status:       Stopped or initializing (no status file found)");
+            println!("Data Dir:     {}", dir.display());
+        }
+    }
+}
+
 fn main() {
     let first = std::env::args().nth(1);
     match first.as_deref() {
@@ -403,6 +478,14 @@ fn main() {
         }
         Some("sensors") => {
             print_sensors();
+            return;
+        }
+        Some("status") => {
+            print_status();
+            return;
+        }
+        Some("help") | Some("--help") | Some("-h") => {
+            print_help();
             return;
         }
         // Remove this device from Nexus (run by the uninstaller).
@@ -460,8 +543,15 @@ fn main() {
         .enable_all()
         .build()
         .expect("failed to start the async runtime");
+    let stop = Arc::new(Notify::new());
+    let stop_signal = stop.clone();
+    runtime.spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            stop_signal.notify_one();
+        }
+    });
     // Runs until the process is stopped; the service passes a real stop signal instead.
-    runtime.block_on(run(path, Arc::new(Notify::new())));
+    runtime.block_on(run(path, stop));
 }
 
 /// The agent: load config, register, then sample / summary / live loop until `stop` fires.
@@ -580,7 +670,22 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         );
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {}
-            _ = stop.notified() => return,
+            _ = stop.notified() => {
+                say!("stopping agent during connection retry");
+                control::write_status(
+                    &data_dir,
+                    &control::AgentStatus {
+                        state: "stopped".to_string(),
+                        cpu_util: 0.0,
+                        ram_pct: 0.0,
+                        temp_c: None,
+                        paused_until: None,
+                        last_tick: usage::now_wall_secs(),
+                        convex_url: Some(config.convex_url.clone()),
+                    },
+                );
+                return;
+            }
         }
     };
     say!("connected as a paired device");
@@ -642,7 +747,36 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         tokio::select! {
             _ = ticker.tick() => {}
             _ = stop.notified() => {
-                say!("stopping");
+                say!("stopping agent, performing clean flush...");
+                control::write_status(
+                    &data_dir,
+                    &control::AgentStatus {
+                        state: "stopped".to_string(),
+                        cpu_util: 0.0,
+                        ram_pct: 0.0,
+                        temp_c: None,
+                        paused_until: None,
+                        last_tick: now_wall_secs(),
+                        convex_url: Some(config.convex_url.clone()),
+                    },
+                );
+                if let Some(s) = aggregator.take() {
+                    let col_status = supervisor.status_map();
+                    backlog.push(summary_value(
+                        now_ms() / 60_000 * 60_000,
+                        &s,
+                        &drives,
+                        &col_status,
+                    ));
+                }
+                if !backlog.is_empty() {
+                    let _ = tokio::time::timeout(
+                        Duration::from_secs(3),
+                        send_backlog(&mut client, &secret_hash, &mut backlog),
+                    )
+                    .await;
+                }
+                say!("agent cleanly stopped");
                 return;
             }
         }
