@@ -22,7 +22,6 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 cp "$bin" "$stage/nexus"
 service_src="$here/nexus.service"
-[ -f "$service_src" ] || service_src="$here/pc-monitor-agent.service"
 cp "$here/install.sh" "$here/uninstall.sh" "$service_src" "$stage/"
 tr -d ' \r\n' < "$url_file" > "$stage/convex-url.txt"
 chmod 755 "$stage/nexus" "$stage/install.sh" "$stage/uninstall.sh"

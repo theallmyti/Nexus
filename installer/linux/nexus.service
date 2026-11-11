@@ -1,17 +1,28 @@
 # systemd unit for the Nexus agent (installed by install.sh).
 [Unit]
-Description=Nexus agent (sends this computer's hardware stats to Nexus)
+Description=Nexus Hardware Monitoring Agent
+Documentation=https://github.com/theallmyti/Monitoring-System
 After=network-online.target
 Wants=network-online.target
 
 [Service]
+Type=simple
 ExecStart=/opt/nexus/nexus /etc/nexus/config.toml
 Restart=always
 RestartSec=5
-# Root is needed for the config (holds the device secret) and some sensors; nothing else.
+
+# Security hardening and sandboxing
 NoNewPrivileges=yes
-ProtectHome=yes
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/etc/nexus
 PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryMax=100M
+CPUQuota=10%
 
 [Install]
 WantedBy=multi-user.target

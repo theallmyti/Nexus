@@ -403,7 +403,7 @@ fn print_help() {
     println!("  status         Show current agent service status and live metrics");
     println!("  pause [MINS]   Pause metrics collection (default: 24h, or specify minutes)");
     println!("  resume         Resume paused metrics collection");
-    println!("  restart        Restart the background agent service (Windows)");
+    println!("  restart        Restart the background agent service (systemd/Windows)");
     println!("  pair           Pair this machine with your Nexus dashboard account");
     println!("  unpair         Remove device secret and unlink from Nexus");
     println!("  sensors        List all detected hardware sensors (temperatures, clocks)");
@@ -421,30 +421,56 @@ fn print_help() {
     );
 }
 
+pub(crate) fn resolve_data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let dir = service::data_dir();
+        if dir.join("status.json").exists() || dir.join("config.toml").exists() {
+            dir
+        } else if PathBuf::from("status.json").exists() || PathBuf::from("config.toml").exists() {
+            PathBuf::from(".")
+        } else {
+            dir
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let candidates = [
+            PathBuf::from("/etc/nexus"),
+            PathBuf::from("/var/lib/nexus"),
+            PathBuf::from("/etc/pc-monitor"),
+            PathBuf::from("/var/lib/pc-monitor-agent"),
+            PathBuf::from("."),
+        ];
+        for c in &candidates {
+            if c.join("status.json").exists() || c.join("config.toml").exists() {
+                return c.clone();
+            }
+        }
+        PathBuf::from("/etc/nexus")
+    }
+}
+
+pub(crate) fn resolve_config_path(explicit: Option<&str>) -> PathBuf {
+    if let Some(p) = explicit {
+        return PathBuf::from(p);
+    }
+    let data_dir = resolve_data_dir();
+    let cfg = data_dir.join("config.toml");
+    if cfg.exists() {
+        cfg
+    } else if PathBuf::from("config.toml").exists() {
+        PathBuf::from("config.toml")
+    } else {
+        data_dir.join("config.toml")
+    }
+}
+
 fn print_status() {
     println!("Nexus Agent v{}", env!("CARGO_PKG_VERSION"));
     println!("-----------------------------");
 
-    #[cfg(windows)]
-    let data_dir = service::data_dir();
-    #[cfg(not(windows))]
-    let data_dir = {
-        let n = PathBuf::from("/var/lib/nexus");
-        let legacy = PathBuf::from("/var/lib/pc-monitor-agent");
-        if !n.join("status.json").exists() && legacy.join("status.json").exists() {
-            legacy
-        } else {
-            n
-        }
-    };
-
-    let dir = if data_dir.join("status.json").exists() {
-        data_dir
-    } else if PathBuf::from("status.json").exists() {
-        PathBuf::from(".")
-    } else {
-        data_dir
-    };
+    let dir = resolve_data_dir();
 
     match control::read_status(&dir) {
         Some(s) => {
@@ -498,10 +524,7 @@ fn main() {
             return;
         }
         Some("pause") => {
-            #[cfg(windows)]
-            let data_dir = service::data_dir();
-            #[cfg(not(windows))]
-            let data_dir = PathBuf::from("/var/lib/nexus");
+            let data_dir = resolve_data_dir();
             let mins: Option<u64> = std::env::args().nth(2).and_then(|m| m.parse().ok());
             let duration_secs = mins.map(|m| m.saturating_mul(60));
             control::set_pause(&data_dir, duration_secs, "cli");
@@ -516,31 +539,53 @@ fn main() {
             return;
         }
         Some("resume") => {
-            #[cfg(windows)]
-            let data_dir = service::data_dir();
-            #[cfg(not(windows))]
-            let data_dir = PathBuf::from("/var/lib/nexus");
+            let data_dir = resolve_data_dir();
             control::clear_pause(&data_dir);
             println!("Nexus monitoring resumed.");
             return;
         }
-        #[cfg(windows)]
         Some("restart") => {
-            println!("Restarting NexusAgent Windows service...");
-            let status = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
-                ])
-                .status();
-            match status {
-                Ok(s) if s.success() => println!("Restart command issued successfully."),
-                _ => println!(
-                    "Failed to trigger service restart. Ensure you have administrator permissions."
-                ),
+            #[cfg(windows)]
+            {
+                println!("Restarting NexusAgent Windows service...");
+                let status = std::process::Command::new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
+                    ])
+                    .status();
+                match status {
+                    Ok(s) if s.success() => println!("Restart command issued successfully."),
+                    _ => println!(
+                        "Failed to trigger service restart. Ensure you have administrator permissions."
+                    ),
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                println!("Restarting Nexus systemd service...");
+                let status = std::process::Command::new("systemctl")
+                    .args(["restart", "nexus"])
+                    .status();
+                match status {
+                    Ok(s) if s.success() => println!("Nexus service restarted successfully."),
+                    _ => {
+                        let sudo_status = std::process::Command::new("sudo")
+                            .args(["systemctl", "restart", "nexus"])
+                            .status();
+                        match sudo_status {
+                            Ok(s) if s.success() => {
+                                println!("Nexus service restarted successfully via sudo.")
+                            }
+                            _ => println!(
+                                "Failed to restart service. Run: sudo systemctl restart nexus"
+                            ),
+                        }
+                    }
+                }
             }
             return;
         }
@@ -550,11 +595,8 @@ fn main() {
         }
         // Remove this device from Nexus (run by the uninstaller).
         Some("unpair") => {
-            let path = PathBuf::from(
-                std::env::args()
-                    .nth(2)
-                    .unwrap_or_else(|| "config.toml".to_string()),
-            );
+            let explicit = std::env::args().nth(2);
+            let path = resolve_config_path(explicit.as_deref());
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -573,7 +615,7 @@ fn main() {
                 ),
                 _ => (pair::Ui::Terminal, rest.first().cloned()),
             };
-            let path = PathBuf::from(config_arg.unwrap_or_else(|| "config.toml".to_string()));
+            let path = resolve_config_path(config_arg.as_deref());
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -598,7 +640,7 @@ fn main() {
         }
         _ => {}
     }
-    let path = PathBuf::from(first.unwrap_or_else(|| "config.toml".to_string()));
+    let path = resolve_config_path(first.as_deref());
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
