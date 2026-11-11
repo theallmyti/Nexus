@@ -60,13 +60,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
           & $iscc /Q installer/nexus-uninstall.iss
           if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
+          Copy-Item agent/target/release/nexus.exe dist/nexus.exe
           Remove-Item installer/convex-url.txt
 
       - name: SHA256SUMS
         shell: pwsh
         working-directory: dist
         run: |
-          Get-ChildItem *.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+          Get-ChildItem *.* | Where-Object { $_.Name -ne 'SHA256SUMS' } | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
             Set-Content SHA256SUMS -Encoding ascii
           Get-Content SHA256SUMS
 
@@ -75,6 +76,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/*.exe dist/SHA256SUMS `
+          gh release create "${{ github.ref_name }}" dist/* `
             --title "Nexus agent ${{ github.ref_name }}" `
-            --notes "Windows installer and uninstaller. Check downloads against SHA256SUMS. Not code-signed: SmartScreen shows 'More info -> Run anyway'."
+            --notes "Nexus release with verified SHA-256 signatures for automatic and manual updates."

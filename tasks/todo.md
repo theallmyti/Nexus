@@ -119,7 +119,7 @@ Common verification commands:
 - [ ] All P0 test cases in Testing.md pass; 24 h soak on each device; Aditya deploys prod; tag `v0.1.0`
 
 ## Phase 5: P1 / stretch (only if on time)
-- [ ] Task 17: Agent auto-update from GitHub Releases with SHA-256 check and rollback (FR-62–65)
+- [x] Task 17: Agent auto-update from GitHub Releases with SHA-256 check and rollback (FR-62–65)
 - [ ] Task 18: Pi nightly Convex export, keep 14 (FR-51)
 - [ ] Task 19: Daily canary send (FR-47), ack is Tirth's
 - [ ] Task 20: Windows full mode with PawnIO (stretch)

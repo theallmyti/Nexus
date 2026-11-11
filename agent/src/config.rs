@@ -24,6 +24,10 @@ pub struct Config {
     /// On by default; set `share_activity = false` to stop sending them.
     #[serde(default = "default_true")]
     pub share_activity: bool,
+    /// Autonomous background auto-update checks from GitHub Releases (FR-62).
+    /// On by default; set `auto_update = false` to disable background updates.
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
 }
 
 fn default_true() -> bool {
@@ -108,6 +112,15 @@ mod tests {
             cfg.share_activity,
             "activity sharing is on unless turned off"
         );
+        assert!(cfg.auto_update, "auto update is on by default");
+    }
+
+    #[test]
+    fn auto_update_can_be_turned_off() {
+        let cfg: Config =
+            toml::from_str("convex_url = \"x\"\nlive_interval_secs = 1\nauto_update = false")
+                .expect("config must parse");
+        assert!(!cfg.auto_update);
     }
 
     #[test]

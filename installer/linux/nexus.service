@@ -1,7 +1,7 @@
 # systemd unit for the Nexus agent (installed by install.sh).
 [Unit]
 Description=Nexus Hardware Monitoring Agent
-Documentation=https://github.com/theallmyti/Monitoring-System
+Documentation=https://github.com/theallmyti/Nexus
 After=network-online.target
 Wants=network-online.target
 

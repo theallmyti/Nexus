@@ -2,7 +2,7 @@
 
 **Maintainers:** Aditya Prasad, Tirth Patel, Pratham Vasava (Vadodara, Gujarat, India)
 **Code license:** [MIT License](LICENSE)
-**Repository:** https://github.com/theallmyti/Monitoring-System
+**Repository:** https://github.com/theallmyti/Nexus
 **Privacy and grievance contact:** contact.nexus07@gmail.com
 **Last updated:** 11 November 2026
 

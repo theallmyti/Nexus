@@ -21,6 +21,7 @@ mod service;
 mod supervisor;
 #[cfg(windows)]
 mod tray;
+mod update;
 mod usage;
 
 use std::collections::BTreeMap;
@@ -407,6 +408,7 @@ fn print_help() {
     println!("  pair           Pair this machine with your Nexus dashboard account");
     println!("  unpair         Remove device secret and unlink from Nexus");
     println!("  sensors        List all detected hardware sensors (temperatures, clocks)");
+    println!("  update         Check for and install the latest Nexus release");
     println!("  help, --help   Show this help message");
     println!();
     #[cfg(windows)]
@@ -589,6 +591,47 @@ fn main() {
             }
             return;
         }
+        Some("update") | Some("upgrade") => {
+            let data_dir = resolve_data_dir();
+            let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus"));
+            let own_version = env!("CARGO_PKG_VERSION");
+            println!("Nexus Update Manager");
+            println!("-------------------");
+            println!("Installed version: v{own_version}");
+            println!("Checking GitHub Releases (https://github.com/theallmyti/Nexus)...");
+
+            match update::fetch_latest_release() {
+                Ok(release) => {
+                    let latest_ver = release.tag_name.trim_start_matches('v');
+                    if update::is_newer(latest_ver, own_version) {
+                        println!("Found newer release: v{latest_ver}");
+                        println!("Downloading release assets and verifying SHA-256 checksums...");
+                        let runtime = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("failed to start async runtime");
+
+                        match runtime.block_on(update::check_and_apply_update(
+                            &data_dir,
+                            own_version,
+                            &current_exe,
+                            true,
+                        )) {
+                            Ok(Some(v)) => {
+                                println!("Successfully updated to Nexus v{v}!");
+                                println!("Service restart command triggered.");
+                            }
+                            Ok(None) => println!("Nexus is already up to date."),
+                            Err(e) => println!("Update failed: {e}"),
+                        }
+                    } else {
+                        println!("Nexus is already up to date (version v{own_version}).");
+                    }
+                }
+                Err(e) => println!("Update check failed: {e}"),
+            }
+            return;
+        }
         Some("help") | Some("--help") | Some("-h") => {
             print_help();
             return;
@@ -717,6 +760,26 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .to_path_buf();
+
+    let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus"));
+    let own_version = env!("CARGO_PKG_VERSION");
+    update::check_startup_health(&data_dir, &current_exe, own_version);
+
+    if config.auto_update {
+        update::spawn_background_updater(
+            data_dir.clone(),
+            own_version.to_string(),
+            current_exe.clone(),
+            stop.clone(),
+        );
+    }
+
+    let verify_data_dir = data_dir.clone();
+    let verify_exe = current_exe.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        update::mark_verified(&verify_data_dir, &verify_exe);
+    });
     control::write_status(
         &data_dir,
         &control::AgentStatus {
@@ -792,7 +855,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     let own_version = env!("CARGO_PKG_VERSION");
     if let Some(latest) = newer_version(&hello, own_version) {
         say!(
-            "update available: version {latest} (this is {own_version});              get it from https://github.com/theallmyti/Monitoring-System/releases"
+            "update available: version {latest} (this is {own_version}); get it from https://github.com/theallmyti/Nexus/releases"
         );
     }
 
