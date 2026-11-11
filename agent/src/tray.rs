@@ -153,7 +153,7 @@ pub fn run() {
             0,
             class_name.as_ptr(),
             to_wide("Nexus Agent Tray").as_ptr(),
-            0,
+            windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP,
             0,
             0,
             0,
@@ -165,11 +165,18 @@ pub fn run() {
         );
 
         if hwnd == 0 {
+            crate::warn!("CreateWindowExW failed for tray: {:#x}", windows_sys::Win32::Foundation::GetLastError());
             return;
         }
 
-        let hicon_active = create_tray_hicon(false);
-        let hicon_paused = create_tray_hicon(true);
+        let mut hicon_active = create_tray_hicon(false);
+        if hicon_active == 0 {
+            hicon_active = windows_sys::Win32::UI::WindowsAndMessaging::LoadIconW(0, windows_sys::Win32::UI::WindowsAndMessaging::IDI_APPLICATION);
+        }
+        let mut hicon_paused = create_tray_hicon(true);
+        if hicon_paused == 0 {
+            hicon_paused = windows_sys::Win32::UI::WindowsAndMessaging::LoadIconW(0, windows_sys::Win32::UI::WindowsAndMessaging::IDI_APPLICATION);
+        }
 
         {
             let mut state = GLOBAL_STATE.lock().unwrap();
@@ -193,7 +200,20 @@ pub fn run() {
         let copy_len = initial_tip.len().min(nid.szTip.len() - 1);
         nid.szTip[..copy_len].copy_from_slice(&initial_tip[..copy_len]);
 
-        Shell_NotifyIconW(NIM_ADD, &nid);
+        let mut added = false;
+        for _ in 0..5 {
+            if Shell_NotifyIconW(NIM_ADD, &nid) != 0 {
+                added = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+
+        if !added {
+            crate::warn!("Shell_NotifyIconW NIM_ADD failed: {:#x}", windows_sys::Win32::Foundation::GetLastError());
+        } else {
+            crate::say!("Nexus Agent tray running in notification area. Click '^' on your taskbar to view.");
+        }
 
         SetTimer(hwnd, TRAY_TIMER_ID, 2000, None);
 
