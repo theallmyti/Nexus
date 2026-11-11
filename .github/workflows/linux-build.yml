@@ -1,7 +1,7 @@
 # Builds the universal static Linux agent for x86-64 and ARM64 (Raspberry Pi) on every push to main.
 # Statically linked with musl and vendored OpenSSL so it runs on every Linux distro without glibc dependency.
 # No secrets: the Convex URL is added later, when the .run installer is packaged locally
-# (installer/linux/make-run.sh). Download: gh run download -n pc-monitor-agent-linux-<arch>
+# (installer/linux/make-run.sh). Download: gh run download -n nexus-linux-<arch>
 name: Linux build
 
 on:
@@ -43,7 +43,7 @@ jobs:
       - run: cargo build --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: pc-monitor-agent-linux-${{ matrix.arch }}
-          path: agent/target/${{ matrix.target }}/release/pc-monitor-agent
+          name: nexus-linux-${{ matrix.arch }}
+          path: agent/target/${{ matrix.target }}/release/nexus
           retention-days: 30
 

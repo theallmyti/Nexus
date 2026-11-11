@@ -7,7 +7,7 @@ if (-not (Test-Path $iscc)) {
     throw "ISCC.exe not found"
 }
 Write-Host "Compiling setup installer..."
-& $iscc /Q installer\pc-monitor-agent.iss
+& $iscc /Q installer\nexus.iss
 Write-Host "Compiling uninstaller..."
-& $iscc /Q installer\pc-monitor-agent-uninstall.iss
+& $iscc /Q installer\nexus-uninstall.iss
 Write-Host "Inno Setup compilation complete."

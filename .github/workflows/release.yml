@@ -24,7 +24,7 @@ jobs:
         run: |
           $version = (Select-String -Path agent/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
           if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match agent/Cargo.toml version $version" }
-          $iss = (Select-String -Path installer/pc-monitor-agent.iss -Pattern '#define AppVersion "(.+)"').Matches[0].Groups[1].Value
+          $iss = (Select-String -Path installer/nexus.iss -Pattern '#define AppVersion "(.+)"').Matches[0].Groups[1].Value
           if ($iss -ne $version) { throw "installer AppVersion $iss does not match $version" }
 
       - uses: dtolnay/rust-toolchain@stable
@@ -56,9 +56,9 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
-          & $iscc /Q installer/pc-monitor-agent.iss
+          & $iscc /Q installer/nexus.iss
           if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
-          & $iscc /Q installer/pc-monitor-agent-uninstall.iss
+          & $iscc /Q installer/nexus-uninstall.iss
           if ($LASTEXITCODE -ne 0) { throw "uninstaller build failed" }
           Remove-Item installer/convex-url.txt
 

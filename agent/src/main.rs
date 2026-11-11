@@ -394,10 +394,10 @@ fn watch_viewer(mut client: ConvexClient, secret_hash: String, viewer_until: Arc
 }
 
 fn print_help() {
-    println!("Nexus PC Monitor Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!("Nexus Agent v{}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("Usage:");
-    println!("  pc-monitor-agent [COMMAND | CONFIG_PATH]");
+    println!("  nexus [COMMAND | CONFIG_PATH]");
     println!();
     println!("Commands:");
     println!("  status         Show current agent service status and live metrics");
@@ -419,13 +419,21 @@ fn print_help() {
 }
 
 fn print_status() {
-    println!("Nexus PC Monitor Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!("Nexus Agent v{}", env!("CARGO_PKG_VERSION"));
     println!("-----------------------------");
 
     #[cfg(windows)]
     let data_dir = service::data_dir();
     #[cfg(not(windows))]
-    let data_dir = PathBuf::from("/var/lib/pc-monitor-agent");
+    let data_dir = {
+        let n = PathBuf::from("/var/lib/nexus");
+        let legacy = PathBuf::from("/var/lib/pc-monitor-agent");
+        if !n.join("status.json").exists() && legacy.join("status.json").exists() {
+            legacy
+        } else {
+            n
+        }
+    };
 
     let dir = if data_dir.join("status.json").exists() {
         data_dir
@@ -444,7 +452,7 @@ fn print_status() {
                     Some(u) if u > now => format!("Paused (resumes in ~{}m)", (u - now) / 60 + 1),
                     _ => "Paused indefinitely".to_string(),
                 },
-                "unpaired" => "Unpaired (run `pc-monitor-agent pair`)".to_string(),
+                "unpaired" => "Unpaired (run `nexus pair`)".to_string(),
                 "connecting" => "Connecting...".to_string(),
                 "stopped" => "Stopped (service idle)".to_string(),
                 other => other.to_string(),
@@ -665,9 +673,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 convex_url: Some(config.convex_url.clone()),
             },
         );
-        say!(
-            "not connected yet (see above; if not paired, run `pc-monitor-agent pair`); retrying in 60 s"
-        );
+        say!("not connected yet (see above; if not paired, run `nexus pair`); retrying in 60 s");
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {}
             _ = stop.notified() => {

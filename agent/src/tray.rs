@@ -581,8 +581,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             update_tray(hwnd);
         }
         ID_PAIR => {
-            let exe_path =
-                std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
+            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus.exe"));
             let config_path = data_dir.join("config.toml");
             std::thread::spawn(move || {
                 #[cfg(windows)]
@@ -630,7 +629,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                         "-WindowStyle",
                         "Hidden",
                         "-Command",
-                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service PCMonitorAgent -ErrorAction SilentlyContinue'",
+                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
                     ])
                     .status();
             });
@@ -644,8 +643,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             UNPAIRING_UNTIL.store(now + 10, Ordering::SeqCst);
             update_tray(hwnd);
 
-            let exe_path =
-                std::env::current_exe().unwrap_or_else(|_| PathBuf::from("pc-monitor-agent.exe"));
+            let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nexus.exe"));
             let config_path = data_dir.join("config.toml");
             let data_dir_clone = data_dir.clone();
 
@@ -680,7 +678,7 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                             "-WindowStyle",
                             "Hidden",
                             "-Command",
-                            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service PCMonitorAgent -ErrorAction SilentlyContinue'",
+                            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue'",
                         ])
                         .status();
                 }

@@ -1,21 +1,21 @@
 ; Nexus agent installer (Inno Setup 6).
-; Build: see installer/README.md. Output: dist\pc-monitor-agent-setup-<version>.exe
+; Build: see installer/README.md. Output: dist\nexus-setup-<version>.exe
 ;
 ; Install (docs/Architecture.md §2.3a):
 ; - Asks for admin (UAC) like any installer; any local fixed drive works as the install folder
 ; - Locks the install folder to SYSTEM + Administrators (the service runs as LocalSystem)
 ; - Optional: installs the official PawnIO driver for CPU temperature (full mode, F8)
-; - Writes %ProgramData%\PCMonitor\config.toml (SYSTEM + Administrators only, docs/Security.md §6)
+; - Writes %ProgramData%\Nexus\config.toml (SYSTEM + Administrators only, docs/Security.md §6)
 ; - "Pair this computer" page: QR code image, code, countdown; the owner scans it on the site/app
 ;   (docs/Flow.md §3). A new code appears automatically when one expires.
-; - Creates the "PCMonitorAgent" Windows service (restarted after a crash, NFR-06) and starts it
+; - Creates the "NexusAgent" Windows service (restarted after a crash, NFR-06) and starts it
 ;   once pairing is done or skipped
 ; Uninstall: stops and deletes the service, removes the device and its history from Nexus,
 ; removes PawnIO (silently if this installer added it, otherwise after asking), deletes all files.
 
 #define AppName "Nexus Agent"
 #define AppVersion "0.2.1"
-#define ServiceName "PCMonitorAgent"
+#define ServiceName "NexusAgent"
 ; The Convex URL is kept out of the repo: installer/convex-url.txt (git-ignored, one line).
 ; Test builds: ISCC /DChannel=dev reads installer/convex-url-dev.txt and adds "-dev" to the name.
 #ifdef Channel
@@ -49,13 +49,13 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=pc-monitor-agent-setup-{#AppVersion}{#OutSuffix}
+OutputBaseFilename=nexus-setup-{#AppVersion}{#OutSuffix}
 Compression=lzma2
 SolidCompression=yes
 LicenseFile=..\LICENSE
 WizardStyle=modern
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\pc-monitor-agent.exe
+UninstallDisplayIcon={app}\nexus.exe
 SetupLogging=yes
 CloseApplications=no
 
@@ -63,7 +63,7 @@ CloseApplications=no
 Name: "cputemp"; Description: "Show CPU temperature (installs the PawnIO driver; the agent then runs with admin rights)"
 
 [Files]
-Source: "..\agent\target\release\pc-monitor-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\agent\target\release\nexus.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
 ; Signed PawnIO modules (LGPL-2.1, github.com/namazso/PawnIO.Modules), fetched by fetch-pawnio.ps1
 Source: "vendor\pawnio\AMDFamily17.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion
@@ -74,17 +74,23 @@ Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flag
 
 [Icons]
 Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
-Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"
+Name: "{autostartup}\Nexus Agent Tray"; Filename: "{app}\nexus.exe"; Parameters: "tray"
 
 [Run]
-Filename: "{app}\pc-monitor-agent.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden
+Filename: "{app}\nexus.exe"; Parameters: "tray"; Description: "Launch Nexus Agent in System Tray"; Flags: nowait postinstall skipifsilent runhidden
 
 [UninstallDelete]
 ; Config (with the device secret), logs and pairing files.
+Type: filesandordirs; Name: "{commonappdata}\Nexus"
 Type: filesandordirs; Name: "{commonappdata}\PCMonitor"
 
 [Code]
 function DataDir(): String;
+begin
+  Result := ExpandConstant('{commonappdata}\Nexus');
+end;
+
+function LegacyDataDir(): String;
 begin
   Result := ExpandConstant('{commonappdata}\PCMonitor');
 end;
@@ -136,9 +142,14 @@ end;
 
 // Stop a running agent before its files are replaced (upgrade).
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
 begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM nexus.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM pc-monitor-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   if ServiceExists() then
     Sc('stop {#ServiceName}');
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Result := '';
 end;
 
@@ -151,6 +162,10 @@ var
   I: Integer;
 begin
   ForceDirectories(DataDir());
+  // Migrate legacy config if upgrading from %ProgramData%\PCMonitor
+  if (not ConfigExists()) and FileExists(LegacyDataDir() + '\config.toml') then
+    FileCopy(LegacyDataDir() + '\config.toml', DataDir() + '\config.toml', False);
+
   if not ConfigExists() then
   begin
     SaveStringToFile(DataDir() + '\config.toml',
@@ -184,14 +199,19 @@ end;
 
 // Created here, started after the pairing page so the agent starts as a paired device.
 procedure CreateService();
+var
+  Code: Integer;
 begin
   if not ServiceExists() then
   begin
-    Sc('create {#ServiceName} binPath= "\"' + ExpandConstant('{app}') + '\pc-monitor-agent.exe\" service" start= delayed-auto DisplayName= "{#AppName}"');
+    Sc('create {#ServiceName} binPath= "\"' + ExpandConstant('{app}') + '\nexus.exe\" service" start= delayed-auto DisplayName= "{#AppName}"');
     Sc('description {#ServiceName} "Sends this computer''s hardware stats to Nexus."');
     // Restart after a crash: 5 s, 5 s, then 60 s; reset the count after a day (NFR-06).
     Sc('failure {#ServiceName} reset= 86400 actions= restart/5000/restart/5000/restart/60000');
   end;
+  // If upgrading from legacy PCMonitorAgent, stop and delete it
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\sc.exe'), 'delete PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -226,7 +246,7 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = PairPage.ID then
-    StartPairing(ExpandConstant('{app}\pc-monitor-agent.exe'), PairDir(), DataDir() + '\config.toml');
+    StartPairing(ExpandConstant('{app}\nexus.exe'), PairDir(), DataDir() + '\config.toml');
 end;
 
 // Next (paired) or Skip: start the service either way; an unpaired agent waits until paired.
@@ -305,13 +325,20 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM nexus.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM pc-monitor-agent.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Sc('stop {#ServiceName}');
+    Exec(ExpandConstant('{sys}\sc.exe'), 'stop PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
     // Remove this computer and its history from Nexus (needs the config, so before files go).
-    Exec(ExpandConstant('{app}\pc-monitor-agent.exe'), 'unpair "' + DataDir() + '\config.toml"',
-      '', SW_HIDE, ewWaitUntilTerminated, Code);
+    if FileExists(ExpandConstant('{app}\nexus.exe')) then
+      Exec(ExpandConstant('{app}\nexus.exe'), 'unpair "' + DataDir() + '\config.toml"',
+        '', SW_HIDE, ewWaitUntilTerminated, Code)
+    else if FileExists(ExpandConstant('{app}\pc-monitor-agent.exe')) then
+      Exec(ExpandConstant('{app}\pc-monitor-agent.exe'), 'unpair "' + DataDir() + '\config.toml"',
+        '', SW_HIDE, ewWaitUntilTerminated, Code);
     Log('unpair -> ' + IntToStr(Code));
     Sc('delete {#ServiceName}');
+    Exec(ExpandConstant('{sys}\sc.exe'), 'delete PCMonitorAgent', '', SW_HIDE, ewWaitUntilTerminated, Code);
     RemovePawnIO();
     RegDeleteKeyIncludingSubkeys(HKLM, '{#StateKey}');
   end;

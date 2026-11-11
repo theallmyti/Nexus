@@ -3,8 +3,8 @@
 //! replaced by a new one automatically, so pairing keeps working until it succeeds or is cancelled.
 //!
 //! Two front ends:
-//! - Terminal: `pc-monitor-agent pair [config]` prints the QR code with block characters.
-//! - Installer window: `pc-monitor-agent pair --ui <dir> [config]` writes `qr.bmp` (black on white)
+//! - Terminal: `nexus pair [config]` prints the QR code with block characters.
+//! - Installer window: `nexus pair --ui <dir> [config]` writes `qr.bmp` (black on white)
 //!   and `status.txt` into <dir> every second; the setup program shows them with a countdown.
 //!   Creating `<dir>\cancel` stops it.
 //!
@@ -306,7 +306,7 @@ pub async fn run(path: &Path, ui: Ui) {
     }
 }
 
-/// `pc-monitor-agent unpair [config]`, run by the uninstaller: removes this device and its
+/// `nexus unpair [config]`, run by the uninstaller: removes this device and its
 /// history from Nexus. Always exits 0 so an offline computer can still be uninstalled.
 pub async fn unpair(path: &Path) {
     let Ok(config) = crate::config::Config::load(path) else {

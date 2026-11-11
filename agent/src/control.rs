@@ -1,4 +1,4 @@
-//! Local control and status IPC via JSON files in data_dir (%ProgramData%\PCMonitor).
+//! Local control and status IPC via JSON files in data_dir (%ProgramData%\Nexus).
 //! Bridges the background service (Session 0) and the user desktop tray (Session 1).
 #![cfg_attr(not(windows), allow(dead_code))]
 

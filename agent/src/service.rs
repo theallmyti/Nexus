@@ -1,6 +1,6 @@
-//! Windows service mode (`pc-monitor-agent service`), started by the Service Control Manager.
+//! Windows service mode (`nexus service`), started by the Service Control Manager.
 //! The installer creates the service; SCM restarts it after a crash (NFR-06).
-//! Config and log live in %ProgramData%\PCMonitor (docs/Security.md §6: owner-only ACL set by the installer).
+//! Config and log live in %ProgramData%\Nexus (docs/Security.md §6: owner-only ACL set by the installer).
 //! API: windows-service 0.8 (define_windows_service!, service_dispatcher::start,
 //! service_control_handler::register, set_service_status).
 
@@ -16,7 +16,7 @@ use windows_service::service::{
 use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
 use windows_service::{define_windows_service, service_dispatcher};
 
-pub const NAME: &str = "PCMonitorAgent";
+pub const NAME: &str = "NexusAgent";
 
 define_windows_service!(ffi_service_main, service_main);
 
@@ -25,12 +25,19 @@ pub fn start() -> windows_service::Result<()> {
     service_dispatcher::start(NAME, ffi_service_main)
 }
 
-/// %ProgramData%\PCMonitor: config.toml and agent.log.
+/// %ProgramData%\Nexus: config.toml and agent.log.
+/// Falls back to legacy %ProgramData%\PCMonitor if that holds config.toml and Nexus does not yet.
 pub fn data_dir() -> PathBuf {
-    std::env::var_os("ProgramData")
+    let base = std::env::var_os("ProgramData")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
-        .join("PCMonitor")
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+    let nexus_dir = base.join("Nexus");
+    let legacy_dir = base.join("PCMonitor");
+    if !nexus_dir.join("config.toml").exists() && legacy_dir.join("config.toml").exists() {
+        legacy_dir
+    } else {
+        nexus_dir
+    }
 }
 
 fn status(state: ServiceState) -> ServiceStatus {

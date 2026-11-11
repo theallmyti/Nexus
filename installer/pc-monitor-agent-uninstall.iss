@@ -1,4 +1,4 @@
-; Standalone uninstaller: dist\pc-monitor-agent-uninstall.exe (Inno Setup 6).
+; Standalone uninstaller: dist\nexus-uninstall.exe (Inno Setup 6).
 ; Removes Nexus Agent from any installed version:
 ; 1. removes this computer and its history from Nexus (bundled agent: `unpair`)
 ; 2. runs the installed uninstaller silently and waits until it has finished
@@ -15,11 +15,11 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=pc-monitor-agent-uninstall
+OutputBaseFilename=nexus-uninstall
 WizardStyle=modern
 
 [Files]
-Source: "..\agent\target\release\pc-monitor-agent.exe"; Flags: dontcopy
+Source: "..\agent\target\release\nexus.exe"; Flags: dontcopy
 
 [Code]
 const
@@ -77,8 +77,11 @@ begin
        'dashboard, and deletes the program and its settings.', mbConfirmation, MB_YESNO) <> IDYES then
       Exit;
 
-    ExtractTemporaryFile('pc-monitor-agent.exe');
-    Exec(ExpandConstant('{tmp}\pc-monitor-agent.exe'),
+    ExtractTemporaryFile('nexus.exe');
+    Exec(ExpandConstant('{tmp}\nexus.exe'),
+      'unpair "' + ExpandConstant('{commonappdata}') + '\Nexus\config.toml"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code);
+    Exec(ExpandConstant('{tmp}\nexus.exe'),
       'unpair "' + ExpandConstant('{commonappdata}') + '\PCMonitor\config.toml"',
       '', SW_HIDE, ewWaitUntilTerminated, Code);
 
