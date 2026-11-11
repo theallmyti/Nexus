@@ -117,8 +117,8 @@ begin
   HintLabel.AutoSize := False;
   HintLabel.Height := ScaleY(60);
   HintLabel.WordWrap := True;
-  HintLabel.Caption := 'On your phone, open Nexus, tap "Pair device" and scan this QR code, ' +
-    'or type the code.';
+  HintLabel.Caption := 'Scan with your camera or Google Lens to open the Nexus app or download the APK. ' +
+    'Or enter the 6-character code manually in the app.';
 
   TimerLabel := TNewStaticText.Create(PairPage);
   TimerLabel.Parent := PairPage.Surface;

@@ -245,15 +245,37 @@ erDiagram
 
 ## Getting started
 
-### Agent
+### Installation & Device Pairing
+
+Install the agent on your computers and link them to your account:
+
+#### Windows
+1. Run `dist\pc-monitor-agent-setup-0.2.1.exe` (or build from `installer\pc-monitor-agent.iss`).
+2. The setup wizard displays a pairing QR code and 6-character code.
+3. **If you have the Nexus app:** Scan the QR code using Google Lens, your phone camera, or the in-app scanner to pair instantly.
+4. **If you don't have the app yet:** Scanning the QR code automatically opens the download page with a direct link to the latest [Nexus Android APK on GitHub Releases](https://github.com/theallmyti/Nexus/releases/latest). Install the app, sign in, and confirm the code.
+
+#### Linux (Ubuntu, Debian, Fedora, Arch, Raspberry Pi, etc.)
+1. Download the universal static installer for your architecture from `dist/`:
+   ```sh
+   # x86-64:
+   sudo sh pc-monitor-agent-0.2.1-linux-x86_64.run
+
+   # ARM64 / Raspberry Pi:
+   sudo sh pc-monitor-agent-0.2.1-linux-aarch64.run
+   ```
+2. Scan the terminal QR code with your phone camera or Google Lens to pair, or type the 6-character code into the app.
+3. To uninstall at any time: `sudo sh /opt/pc-monitor/uninstall.sh` (or `sudo sh dist/pc-monitor-agent-uninstall.sh`).
+
+### Agent Development
 
 Requires a Rust toolchain with edition 2024 support (Rust 1.85 or newer).
 
 ```sh
 cd agent
-cp config.example.toml config.toml
-# add registration_secret to config.toml (ask the other team member)
-cargo run
+cargo check
+cargo test
+cargo run -- pair     # run interactive pairing flow
 ```
 
 `config.toml` settings:
@@ -262,16 +284,8 @@ cargo run
 |---|---|---|
 | `convex_url` | yes | Convex deployment URL |
 | `live_interval_secs` | yes | Seconds between samples and live pushes (default 1) |
-| `registration_secret` | yes, until pairing lands | Team secret used to register a device |
-| `device_secret` | no | Generated and saved on first run; never share it |
+| `device_secret` | auto | Generated and saved on first run with restricted 0600 permissions; never share it |
 | `dashboard_url` | no (Pi only) | Home-server `/api/system` URL for Docker counts |
-
-Other commands:
-
-```sh
-cargo run -- sensors              # list the temperature sensors this machine exposes
-cargo run -- path/to/config.toml  # use a different config file
-```
 
 ### Backend
 
@@ -279,11 +293,8 @@ cargo run -- path/to/config.toml  # use a different config file
 cd convex
 npm install
 npm run dev        # push functions to the Convex deployment and watch for changes
-npm run test       # Vitest
-npm run typecheck
+npm run test       # Vitest (48 unit & integration tests)
 ```
-
-The backend reads `DASHBOARD_READ_TOKEN` and the registration secret from Convex environment variables.
 
 ---
 

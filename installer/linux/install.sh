@@ -45,8 +45,8 @@ fi
 chmod 600 "$cfg"
 
 echo
-echo "Pair this computer: scan the QR code below with the Nexus site (Pair device),"
-echo "or type the code. Press Ctrl+C to skip; the agent then waits until it is paired."
+echo "Pair this computer: scan the QR code below with your camera or Google Lens to open Nexus (or download the APK),"
+echo "or type the 6-character code in the app. Press Ctrl+C to skip; the agent then waits until it is paired."
 echo
 /opt/pc-monitor/pc-monitor-agent pair "$cfg" || echo "Not paired yet. Pair later with: sudo /opt/pc-monitor/pc-monitor-agent pair $cfg"
 

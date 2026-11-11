@@ -21,7 +21,8 @@ use futures::StreamExt;
 use qrcode::render::unicode;
 use qrcode::{Color, QrCode};
 
-/// What the QR code contains. The site and app scanners read the code after the prefix.
+/// What the legacy QR code contains. The site and app scanners read the code after the prefix or from the URL.
+#[allow(dead_code)]
 pub const QR_PREFIX: &str = "NEXUS-PAIR:";
 /// FR-12: codes expire after 10 minutes.
 const CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
@@ -29,8 +30,16 @@ const CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 const MODULE_PX: usize = 8;
 const QUIET_MODULES: usize = 4;
 
-pub fn qr_text(code: &str) -> Option<String> {
-    let qr = QrCode::new(format!("{QR_PREFIX}{code}")).ok()?;
+/// Formats the smart web pairing URL used by Google Lens, default camera apps, and deep links.
+pub fn pairing_url(convex_url: &str, code: &str) -> String {
+    let base = convex_url
+        .trim_end_matches('/')
+        .replace(".convex.cloud", ".convex.site");
+    format!("{base}/pair?code={code}")
+}
+
+pub fn qr_text(payload: &str) -> Option<String> {
+    let qr = QrCode::new(payload).ok()?;
     Some(
         qr.render::<unicode::Dense1x2>()
             .dark_color(unicode::Dense1x2::Light)
@@ -40,8 +49,8 @@ pub fn qr_text(code: &str) -> Option<String> {
 }
 
 /// 24-bit BMP of the QR code, black modules on white with the standard quiet zone.
-pub fn qr_bmp(code: &str) -> Option<Vec<u8>> {
-    let qr = QrCode::new(format!("{QR_PREFIX}{code}")).ok()?;
+pub fn qr_bmp(payload: &str) -> Option<Vec<u8>> {
+    let qr = QrCode::new(payload).ok()?;
     let modules = qr.width();
     let colors = qr.to_colors();
     let side = (modules + 2 * QUIET_MODULES) * MODULE_PX;
@@ -122,21 +131,24 @@ impl Ui {
         }
     }
 
-    fn show_code(&self, code: &str) {
+    fn show_code(&self, payload: &str, code: &str) {
         match self {
             Ui::Terminal => {
                 println!();
-                if let Some(qr) = qr_text(code) {
+                if let Some(qr) = qr_text(payload) {
                     println!("{qr}");
                 }
                 println!("  Code: {}", spaced(code));
                 println!();
-                println!("  On your phone: open Nexus, tap \"Pair device\", and scan this QR code");
-                println!("  (or type the code). A new code appears if this one expires.");
+                println!(
+                    "  Scan with your phone camera or Google Lens to open Nexus (or download the APK)."
+                );
+                println!("  Or enter the code manually in the app: {}", spaced(code));
+                println!("  (A new code appears automatically if this one expires).");
                 println!();
             }
             Ui::Files(dir) => {
-                if let Some(bmp) = qr_bmp(code) {
+                if let Some(bmp) = qr_bmp(payload) {
                     write_atomic(&dir.join("qr.bmp"), &bmp);
                 }
             }
@@ -241,7 +253,8 @@ pub async fn run(path: &Path, ui: Ui) {
             continue;
         }
         let expires = Instant::now() + CODE_LIFETIME;
-        ui.show_code(&code);
+        let payload = pairing_url(&config.convex_url, &code);
+        ui.show_code(&payload, &code);
 
         let mut status_args = BTreeMap::new();
         status_args.insert("code".to_string(), text(&code));
@@ -331,6 +344,18 @@ mod tests {
         let qr = qr_text("ABC234").unwrap();
         assert!(qr.lines().count() > 10, "a QR code is drawn");
         assert_eq!(spaced("ABC234"), "ABC 234");
+    }
+
+    #[test]
+    fn pairing_url_formats_convex_site_endpoint() {
+        assert_eq!(
+            pairing_url("https://tidy-newt-65.convex.cloud", "ABC234"),
+            "https://tidy-newt-65.convex.site/pair?code=ABC234"
+        );
+        assert_eq!(
+            pairing_url("https://custom.domain.com/", "XYZ789"),
+            "https://custom.domain.com/pair?code=XYZ789"
+        );
     }
 
     #[test]
