@@ -1,0 +1,92 @@
+================================================================================
+                    NEXUS END USER LICENSE & TERMS AGREEMENT
+================================================================================
+
+Maintainers: Aditya Prasad, Tirth Patel, Pratham Vasava (Vadodara, Gujarat, India)
+Privacy & Grievance Contact: contact.nexus07@gmail.com
+Official Repository: https://github.com/theallmyti/Nexus
+Last Updated: November 11, 2026
+
+PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE NEXUS AGENT.
+YOU MUST ACCEPT THESE TERMS IN ORDER TO INSTALL AND USE THIS SOFTWARE.
+
+--------------------------------------------------------------------------------
+PART 1: SOFTWARE LICENSE (MIT LICENSE)
+--------------------------------------------------------------------------------
+
+Copyright (c) 2026 Aditya Prasad, Tirth Patel, Pratham Vasava
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+PART 2: TERMS OF SERVICE & ACCEPTABLE USE
+--------------------------------------------------------------------------------
+
+1. ELIGIBILITY: You must be at least 18 years old to use the hosted Nexus service.
+2. AUTHORIZED MONITORING ONLY (STRICT REQUIREMENT):
+   You may install the Nexus Agent ONLY on computers that you own, or where you have
+   explicit authorization from the owner and where all users of the computer have
+   been informed of the monitoring.
+   Secret, unauthorized, or covert surveillance of any individual is strictly
+   prohibited and may constitute a criminal offence under applicable computer crime
+   and data privacy laws (including India's Information Technology Act, 2000 and
+   DPDP Act, 2023, and the EU/UK GDPR).
+3. FREE STUDENT PROJECT: Nexus is a free, non-commercial educational project.
+   No uptime, SLA, or uninterrupted service is guaranteed. Features may change or
+   be discontinued.
+4. INFORMATIONAL USE ONLY: Hardware readings, temperatures, and alerts are for
+   informational purposes only. Do not rely on Nexus for safety-critical, medical,
+   industrial, or life-support applications.
+5. OPTIONAL PAWNIO KERNEL DRIVER:
+   On Windows, CPU temperature monitoring optionally uses the third-party PawnIO
+   driver (LGPL-2.1 by namazso). It executes at kernel level. Installation is at
+   your own choice and risk. Antivirus or game anti-cheat software may flag it.
+   Nexus can run completely without it in "no-driver mode".
+6. LIMITATION OF LIABILITY: To the maximum extent permitted by applicable law,
+   the total liability of the authors is capped at ₹1,000 (INR).
+
+--------------------------------------------------------------------------------
+PART 3: PRIVACY & TELEMETRY SUMMARY
+--------------------------------------------------------------------------------
+
+1. WHAT IS COLLECTED:
+   - Device hardware specifications: Hostname, OS edition, CPU model, RAM MT/s,
+     drive capacities, battery status, and NVIDIA GPU statistics.
+   - Performance metrics: Real-time CPU%, RAM%, temperatures, and fan speeds.
+   - Activity data (default on, can be turned off with share_activity = false):
+     Names of the top 5 processes by memory usage (e.g. chrome.exe) and
+     system boot, sleep, and wake timestamps.
+2. ZERO SURVEILLANCE GUARANTEE:
+   Nexus strictly NEVER collects, records, or accesses:
+   - Keystrokes or keyboard inputs
+   - Screenshots or display recordings
+   - File contents, personal documents, or directories
+   - Browser history, URLs, or network packets
+   - Microphones, cameras, or GPS location
+3. DATA RETENTION: Minute-level telemetry rollups are stored for 7 days in the
+   Convex database and automatically purged thereafter. Account records are kept
+   until you initiate account deletion.
+4. YOUR RIGHTS: You have full access to self-service JSON data export (Right to
+   Data Portability) and permanent cascading account deletion (Right to Erasure)
+   directly from the Nexus dashboard at any time.
+
+For full, legally binding documents:
+- Terms of Service: https://github.com/theallmyti/Nexus/blob/main/docs/TERMS.md
+- Privacy Policy:   https://github.com/theallmyti/Nexus/blob/main/docs/PRIVACY.md
+================================================================================

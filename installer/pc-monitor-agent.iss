@@ -52,7 +52,7 @@ OutputDir=..\dist
 OutputBaseFilename=nexus-setup-{#AppVersion}{#OutSuffix}
 Compression=lzma2
 SolidCompression=yes
-LicenseFile=..\LICENSE
+LicenseFile=LEGAL_AGREEMENT.txt
 WizardStyle=modern
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\nexus.exe
@@ -67,6 +67,11 @@ Name: "addtopath"; Description: "Add Nexus to system PATH (allows running 'nexus
 [Files]
 Source: "..\agent\target\release\nexus.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
+Source: "LEGAL_AGREEMENT.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\LEGAL.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\docs\PRIVACY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\docs\TERMS.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\docs\COOKIE_POLICY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 ; Signed PawnIO modules (LGPL-2.1, github.com/namazso/PawnIO.Modules), fetched by fetch-pawnio.ps1
 Source: "vendor\pawnio\AMDFamily17.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion
 Source: "vendor\pawnio\IntelMSR.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion

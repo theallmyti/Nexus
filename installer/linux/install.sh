@@ -26,6 +26,29 @@ url=${CONVEX_URL:-}
 [ -n "$url" ] || { [ -f "$here/convex-url.txt" ] && url=$(tr -d ' \r\n' < "$here/convex-url.txt"); }
 case "$url" in https://*.convex.cloud) ;; *) echo "Set CONVEX_URL or put the Convex URL in $here/convex-url.txt" >&2; exit 1 ;; esac
 
+echo "================================================================================"
+echo "                     NEXUS END USER TERMS & PRIVACY NOTICE"
+echo "================================================================================"
+echo "Nexus is open-source hardware monitoring software licensed under the MIT License."
+echo "By installing Nexus on this system, you confirm that:"
+echo "  1. You are at least 18 years of age."
+echo "  2. You own this computer or have explicit permission to monitor its hardware."
+echo "     Unauthorized surveillance of individuals is strictly prohibited."
+echo "  3. You accept the Nexus Terms of Service and Privacy Policy:"
+echo "     https://github.com/theallmyti/Nexus/blob/main/docs/TERMS.md"
+echo "     https://github.com/theallmyti/Nexus/blob/main/docs/PRIVACY.md"
+echo "================================================================================"
+echo
+
+if [ "${ASSUME_YES:-0}" -ne 1 ] && [ -t 0 ]; then
+  printf "Do you accept the Terms of Service and Privacy Policy? [y/N]: "
+  read -r accept
+  case "$accept" in
+    [yY]|[yY][eE][sS]) ;;
+    *) echo "Installation cancelled: Terms of Service not accepted." >&2; exit 1 ;;
+  esac
+fi
+
 if [ "$has_systemd" -eq 1 ]; then
   systemctl stop nexus 2>/dev/null || true
   systemctl stop pc-monitor-agent 2>/dev/null || true
@@ -33,6 +56,14 @@ fi
 install -d -m 755 /opt/nexus
 install -m 755 "$bin" /opt/nexus/nexus
 [ -f "$here/uninstall.sh" ] && install -m 755 "$here/uninstall.sh" /opt/nexus/uninstall.sh
+
+# Documentation and legal terms
+install -d -m 755 /opt/nexus/docs
+[ -f "$here/LEGAL_AGREEMENT.txt" ] && install -m 644 "$here/LEGAL_AGREEMENT.txt" /opt/nexus/docs/LEGAL_AGREEMENT.txt
+[ -f "$here/LEGAL.md" ] && install -m 644 "$here/LEGAL.md" /opt/nexus/docs/LEGAL.md
+[ -f "$here/docs/TERMS.md" ] && install -m 644 "$here/docs/TERMS.md" /opt/nexus/docs/TERMS.md
+[ -f "$here/docs/PRIVACY.md" ] && install -m 644 "$here/docs/PRIVACY.md" /opt/nexus/docs/PRIVACY.md
+[ -f "$here/docs/COOKIE_POLICY.md" ] && install -m 644 "$here/docs/COOKIE_POLICY.md" /opt/nexus/docs/COOKIE_POLICY.md
 
 # Symlink so `nexus` terminal commands work anywhere without full path
 ln -sf /opt/nexus/nexus /usr/local/bin/nexus

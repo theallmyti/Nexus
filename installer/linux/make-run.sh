@@ -26,6 +26,14 @@ cp "$here/install.sh" "$here/uninstall.sh" "$service_src" "$stage/"
 tr -d ' \r\n' < "$url_file" > "$stage/convex-url.txt"
 chmod 755 "$stage/nexus" "$stage/install.sh" "$stage/uninstall.sh"
 
+# Bundle offline legal and documentation files
+mkdir -p "$stage/docs"
+[ -f "$root/installer/LEGAL_AGREEMENT.txt" ] && cp "$root/installer/LEGAL_AGREEMENT.txt" "$stage/"
+[ -f "$root/LEGAL.md" ] && cp "$root/LEGAL.md" "$stage/"
+[ -f "$root/docs/TERMS.md" ] && cp "$root/docs/TERMS.md" "$stage/docs/"
+[ -f "$root/docs/PRIVACY.md" ] && cp "$root/docs/PRIVACY.md" "$stage/docs/"
+[ -f "$root/docs/COOKIE_POLICY.md" ] && cp "$root/docs/COOKIE_POLICY.md" "$stage/docs/"
+
 out="$root/dist/nexus-$version-linux-$arch.run"
 mkdir -p "$root/dist"
 cat > "$out" <<EOF
