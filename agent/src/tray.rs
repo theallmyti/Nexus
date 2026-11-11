@@ -1,6 +1,6 @@
 //! Windows system tray controller for Nexus Agent.
 //! Runs in the user desktop session (Session 1), displays real-time tooltip stats,
-//! provides pause/resume controls, opens the web dashboard, and manages service state.
+//! provides pause/resume controls, opens the log viewer, and manages service state.
 
 #![cfg(windows)]
 
@@ -9,6 +9,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::null;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HBITMAP};
@@ -16,7 +17,7 @@ use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
-    Shell_NotifyIconW, ShellExecuteW,
+    Shell_NotifyIconW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
@@ -46,10 +47,11 @@ const ID_PAUSE_CUSTOM: usize = 2016;
 const ID_PAUSE_INDEF: usize = 2017;
 const ID_RESUME: usize = 2020;
 const ID_PAIR: usize = 2025;
-const ID_DASHBOARD: usize = 2030;
 const ID_OPEN_LOGS: usize = 2040;
 const ID_RESTART_SERVICE: usize = 2050;
 const ID_EXIT: usize = 2099;
+
+static RESTARTING_UNTIL: AtomicU64 = AtomicU64::new(0);
 
 fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s)
@@ -268,6 +270,7 @@ fn update_tray(hwnd: HWND) {
 
         let ctrl = control::read_control(&state.data_dir);
         let status = control::read_status(&state.data_dir);
+        let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
 
         let icon = if ctrl.paused {
             state.hicon_paused
@@ -275,7 +278,9 @@ fn update_tray(hwnd: HWND) {
             state.hicon_active
         };
 
-        let tip = if ctrl.paused {
+        let tip = if is_restarting {
+            "Nexus Agent: Restarting service...\nPlease wait...".to_string()
+        } else if ctrl.paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
                 let rem_min = if until > now {
@@ -294,7 +299,7 @@ fn update_tray(hwnd: HWND) {
             if s.state == "stopped" {
                 "Nexus Agent: Stopped\nService is idle".to_string()
             } else if s.state == "unpaired" {
-                "Nexus Agent: Unpaired\nRight-click to pair or open dashboard".to_string()
+                "Nexus Agent: Unpaired\nRight-click to pair".to_string()
             } else if s.state == "connecting" {
                 "Nexus Agent: Connecting...".to_string()
             } else {
@@ -344,6 +349,7 @@ fn show_context_menu(hwnd: HWND) {
     let is_paused = ctrl.paused;
     let is_unpaired = status.as_ref().is_some_and(|s| s.state == "unpaired");
     let is_stopped = status.as_ref().is_some_and(|s| s.state == "stopped");
+    let is_restarting = control::now_secs() < RESTARTING_UNTIL.load(Ordering::SeqCst);
 
     unsafe {
         let hmenu = CreatePopupMenu();
@@ -401,7 +407,9 @@ fn show_context_menu(hwnd: HWND) {
             to_wide("Nexus Agent").as_ptr(),
         );
 
-        let status_label = if is_paused {
+        let status_label = if is_restarting {
+            "Status: ⏳ Restarting service...".to_string()
+        } else if is_paused {
             if let Some(until) = ctrl.until {
                 let now = control::now_secs();
                 let rem_min = if until > now {
@@ -438,7 +446,7 @@ fn show_context_menu(hwnd: HWND) {
             AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
         }
 
-        let pause_flags = if is_stopped {
+        let pause_flags = if is_stopped || is_restarting {
             MF_POPUP | MF_DISABLED | MF_GRAYED
         } else {
             MF_POPUP
@@ -450,7 +458,7 @@ fn show_context_menu(hwnd: HWND) {
             to_wide("Pause Monitoring").as_ptr(),
         );
 
-        let resume_flags = if is_paused && !is_stopped {
+        let resume_flags = if is_paused && !is_stopped && !is_restarting {
             MF_STRING
         } else {
             MF_STRING | MF_DISABLED | MF_GRAYED
@@ -466,28 +474,31 @@ fn show_context_menu(hwnd: HWND) {
         AppendMenuW(
             hmenu,
             MF_STRING,
-            ID_DASHBOARD,
-            to_wide("Open Web Dashboard").as_ptr(),
-        );
-        AppendMenuW(
-            hmenu,
-            MF_STRING,
             ID_OPEN_LOGS,
             to_wide("Open Logs...").as_ptr(),
         );
 
         AppendMenuW(hmenu, MF_SEPARATOR, 0, null());
-        let restart_label = if is_stopped {
-            "Start Service"
+        if is_restarting {
+            AppendMenuW(
+                hmenu,
+                MF_STRING | MF_DISABLED | MF_GRAYED,
+                ID_RESTART_SERVICE,
+                to_wide("Restarting Service...").as_ptr(),
+            );
         } else {
-            "Restart Service"
-        };
-        AppendMenuW(
-            hmenu,
-            MF_STRING,
-            ID_RESTART_SERVICE,
-            to_wide(restart_label).as_ptr(),
-        );
+            let restart_label = if is_stopped {
+                "Start Service"
+            } else {
+                "Restart Service"
+            };
+            AppendMenuW(
+                hmenu,
+                MF_STRING,
+                ID_RESTART_SERVICE,
+                to_wide(restart_label).as_ptr(),
+            );
+        }
         AppendMenuW(hmenu, MF_STRING, ID_EXIT, to_wide("Exit Tray").as_ptr());
 
         let mut pt: POINT = std::mem::zeroed();
@@ -567,25 +578,26 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                 }
             });
         }
-        ID_DASHBOARD => {
-            let url = get_dashboard_url(&data_dir);
-            if is_safe_web_url(&url) {
-                unsafe {
-                    let wide_url = to_wide(&url);
-                    let wide_open = to_wide("open");
-                    ShellExecuteW(0, wide_open.as_ptr(), wide_url.as_ptr(), null(), null(), 1);
-                }
-            }
-        }
         ID_OPEN_LOGS => {
             let log_path = data_dir.join("agent.log");
-            unsafe {
-                let wide_path = to_wide(&log_path.to_string_lossy());
-                let wide_open = to_wide("open");
-                ShellExecuteW(0, wide_open.as_ptr(), wide_path.as_ptr(), null(), null(), 1);
+            let _ = std::fs::create_dir_all(&data_dir);
+            if !log_path.exists() {
+                let _ = std::fs::write(&log_path, "=== Nexus Agent Log ===\r\n");
             }
+            let _ = std::process::Command::new("notepad.exe")
+                .arg(&log_path)
+                .spawn();
         }
         ID_RESTART_SERVICE => {
+            let now = control::now_secs();
+            let restarting_until = RESTARTING_UNTIL.load(Ordering::SeqCst);
+            if now < restarting_until {
+                return; // Guard against rapid duplicate clicks
+            }
+            // 10-second cooldown and visual indicator
+            RESTARTING_UNTIL.store(now + 10, Ordering::SeqCst);
+            update_tray(hwnd);
+
             std::thread::spawn(|| {
                 // Elevate via UAC runas verb so the service restart doesn't silently fail from a standard user session
                 let _ = std::process::Command::new("powershell")
@@ -631,49 +643,6 @@ fn prompt_custom_pause(data_dir: &Path) {
     }
 }
 
-/// Validate web URL before ShellExecuteW to prevent command execution, file protocol hijacking, or LPE.
-pub fn is_safe_web_url(url: &str) -> bool {
-    let lower = url.trim().to_lowercase();
-    if !lower.starts_with("https://") && !lower.starts_with("http://") {
-        return false;
-    }
-    // Disallow whitespace, quotes, or dangerous control characters
-    if lower
-        .chars()
-        .any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>')
-    {
-        return false;
-    }
-    true
-}
-
-fn get_dashboard_url(data_dir: &Path) -> String {
-    // 1. Prefer reading config.toml because it is admin-controlled
-    let config_path = data_dir.join("config.toml");
-    if let Ok(c) = std::fs::read_to_string(config_path) {
-        for line in c.lines() {
-            if line.trim().starts_with("convex_url")
-                && let Some(val) = line.split('=').nth(1)
-            {
-                let raw = val.trim().trim_matches('"').trim();
-                if is_safe_web_url(raw) {
-                    return raw.to_string();
-                }
-            }
-        }
-    }
-
-    // 2. Fallback to status.json only if sanitized and validated
-    if let Some(status) = control::read_status(data_dir)
-        && let Some(url) = status.convex_url
-        && is_safe_web_url(&url)
-    {
-        return url;
-    }
-
-    "https://github.com/theallmyti/Monitoring-System".to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,15 +656,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_safe_web_url() {
-        assert!(is_safe_web_url("https://tidy-newt-65.convex.cloud"));
-        assert!(is_safe_web_url("http://localhost:3000"));
-        assert!(is_safe_web_url("http://127.0.0.1:8000"));
-        // Dangerous schemes or commands blocked
-        assert!(!is_safe_web_url("file:///C:/Users/Public/evil.bat"));
-        assert!(!is_safe_web_url("cmd.exe /c calc.exe"));
-        assert!(!is_safe_web_url("powershell -enc AAAAA"));
-        assert!(!is_safe_web_url("javascript:alert(1)"));
-        assert!(!is_safe_web_url("https://example.com/\"evil"));
+    fn test_restart_cooldown_logic() {
+        let now = control::now_secs();
+        RESTARTING_UNTIL.store(now + 10, Ordering::SeqCst);
+        let cooldown = RESTARTING_UNTIL.load(Ordering::SeqCst);
+        assert!(cooldown >= now + 9);
+        RESTARTING_UNTIL.store(0, Ordering::SeqCst);
+        assert_eq!(RESTARTING_UNTIL.load(Ordering::SeqCst), 0);
     }
 }
