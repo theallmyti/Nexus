@@ -1,6 +1,7 @@
 // Endpoints for the site (and the app): every call needs a signed-in session and only ever
 // touches the caller's own devices (docs/Security.md §2, FR-13, FR-14, T-12).
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { LIMITS, isLimited, recordEvent } from "./rateLimit";
 import { LATEST_AGENT_VERSION, isOutdated } from "./versions";
@@ -19,34 +20,44 @@ const OFFLINE_AFTER_MS = 3 * 60 * 1000;
 // FR-33: the viewer sets now + 30 s and repeats every 15 s while a screen is open.
 const VIEWER_WINDOW_MS = 30 * 1000;
 
+export function isOnline(device: Doc<"devices">, now: number) {
+  return now - device.lastSeenAt < OFFLINE_AFTER_MS;
+}
+
+// The caller's devices with their latest live row (overview, devices:getMyDevices).
+export async function listDevices(ctx: QueryCtx, user: Doc<"users">) {
+  const now = Date.now();
+  const devices = await ctx.db
+    .query("devices")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .collect();
+  const latestList = await Promise.all(
+    devices.map((d) =>
+      ctx.db
+        .query("latest")
+        .withIndex("by_device", (q) => q.eq("deviceId", d._id))
+        .unique(),
+    ),
+  );
+  return devices.map((d, i) => ({
+    id: d._id,
+    name: d.name,
+    os: d.os ?? null,
+    lastSeenAt: d.lastSeenAt,
+    online: isOnline(d, now),
+    agentVersion: d.agentVersion ?? null,
+    capabilities: d.capabilities ?? null,
+    updateAvailable: isOutdated(d.agentVersion),
+    latest: latestList[i] ?? null,
+  }));
+}
+
 export const overview = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
-    const now = Date.now();
-    const devices = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
-    const latestList = await Promise.all(
-      devices.map((d) =>
-        ctx.db
-          .query("latest")
-          .withIndex("by_device", (q) => q.eq("deviceId", d._id))
-          .unique(),
-      ),
-    );
-    const out = devices.map((d, i) => ({
-      id: d._id,
-      name: d.name,
-      lastSeenAt: d.lastSeenAt,
-      online: now - d.lastSeenAt < OFFLINE_AFTER_MS,
-      agentVersion: d.agentVersion ?? null,
-      capabilities: d.capabilities ?? null,
-      updateAvailable: isOutdated(d.agentVersion),
-      latest: latestList[i] ?? null,
-    }));
-    return { now, latestAgentVersion: LATEST_AGENT_VERSION, devices: out };
+    const devices = await listDevices(ctx, user);
+    return { now: Date.now(), latestAgentVersion: LATEST_AGENT_VERSION, devices };
   },
 });
 
@@ -159,47 +170,53 @@ export const confirmPairing = mutation({
   args: { token: v.string(), code: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
-    const key = `wrongCode:${user._id}`;
-    if (await isLimited(ctx, key, LIMITS.wrongCode)) {
-      throw new ConvexError(TOO_MANY_WRONG);
-    }
-    const r = await pairingByCode(ctx, args.code);
-    if (!r) {
-      await recordEvent(ctx, key);
-      return null; // not found (counted as a wrong code)
-    }
-    if (pairingState(r, Date.now()) !== "pending") {
-      throw new ConvexError("code not found or expired");
-    }
-    const now = Date.now();
-    const existing = await deviceBySecretHash(ctx, r.secretHash);
-    if (existing) {
-      if (existing.userId && existing.userId !== user._id) {
-        throw new ConvexError("device already paired to another account");
-      }
-    } else {
-      const userDevices = await ctx.db
-        .query("devices")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .collect();
-      if (userDevices.length >= MAX_DEVICES_PER_USER) {
-        throw new ConvexError(`Device limit reached (max ${MAX_DEVICES_PER_USER} devices per account).`);
-      }
-    }
-    let deviceId;
-    if (existing) {
-      await ctx.db.patch(existing._id, { userId: user._id, isFake: false });
-      deviceId = existing._id;
-    } else {
-      deviceId = await ctx.db.insert("devices", {
-        userId: user._id,
-        name: r.name,
-        secretHash: r.secretHash,
-        lastSeenAt: now,
-        isFake: false,
-      });
-    }
-    await ctx.db.patch(r._id, { status: "confirmed", deviceId });
-    return { deviceId, name: r.name };
+    return await confirmPairingCode(ctx, user, args.code);
   },
 });
+
+// Shared by dashboard:confirmPairing and devices:confirmPairing (the app).
+export async function confirmPairingCode(ctx: MutationCtx, user: Doc<"users">, code: string) {
+  const key = `wrongCode:${user._id}`;
+  if (await isLimited(ctx, key, LIMITS.wrongCode)) {
+    throw new ConvexError(TOO_MANY_WRONG);
+  }
+  const r = await pairingByCode(ctx, code);
+  if (!r) {
+    await recordEvent(ctx, key);
+    return null; // not found (counted as a wrong code)
+  }
+  if (pairingState(r, Date.now()) !== "pending") {
+    throw new ConvexError("code not found or expired");
+  }
+  const now = Date.now();
+  const existing = await deviceBySecretHash(ctx, r.secretHash);
+  if (existing) {
+    if (existing.userId && existing.userId !== user._id) {
+      throw new ConvexError("device already paired to another account");
+    }
+  } else {
+    const userDevices = await ctx.db
+      .query("devices")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    if (userDevices.length >= MAX_DEVICES_PER_USER) {
+      throw new ConvexError(`Device limit reached (max ${MAX_DEVICES_PER_USER} devices per account).`);
+    }
+  }
+  let deviceId;
+  if (existing) {
+    await ctx.db.patch(existing._id, { userId: user._id, isFake: false });
+    deviceId = existing._id;
+  } else {
+    deviceId = await ctx.db.insert("devices", {
+      userId: user._id,
+      name: r.name,
+      secretHash: r.secretHash,
+      lastSeenAt: now,
+      isFake: false,
+      os: r.os,
+    });
+  }
+  await ctx.db.patch(r._id, { status: "confirmed", deviceId });
+  return { deviceId, name: r.name, os: r.os };
+}

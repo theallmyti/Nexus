@@ -58,7 +58,6 @@ import com.pcmonitor.app.ui.theme.TextWhite
 import com.pcmonitor.app.util.PairingHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -80,180 +79,82 @@ fun PairingProgressScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var pairedDeviceName by remember { mutableStateOf("PC") }
     var pairedDeviceOs by remember { mutableStateOf("Linux") }
+    // Set once the code is looked up: the user must see which computer is asking and tap PAIR
+    // before it is linked (docs/Security.md §2). A code can arrive from a link on any website.
+    var awaitingConfirm by remember { mutableStateOf(false) }
+    var confirmRequested by remember { mutableStateOf(false) }
+    val cleanCode = remember(code) { PairingHelper.normalizeCode(code) }
 
-    LaunchedEffect(Unit) {
-        val cleanCode = PairingHelper.normalizeCode(code)
-
-        delay(600L)
+    // 1. Look the code up. Nothing is linked yet.
+    LaunchedEffect(cleanCode) {
+        delay(400L)
         currentStep = 2
-        progress = 0.5f
-
-        delay(600L)
-        currentStep = 3
-        progress = 0.75f
-
-        // Confirm pairing code on Convex backend using session token or email
-        var pairingSuccess = false
-        var deviceId = ""
-        var hostname = "Monitored PC"
-        var err: String? = null
-
-        withContext(Dispatchers.IO) {
-            try {
-                val token = userPreferencesRepository.getSessionToken()
-                val email = userPreferencesRepository.userEmail.first().trim()
-
-                val client = OkHttpClient()
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-
-                // Step 1: If session token exists, check and confirm via dashboard API contract
-                if (!token.isNullOrBlank()) {
-                    // checkPairingCode
-                    val checkJson = JSONObject().apply {
-                        put("path", "dashboard:checkPairingCode")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                            put("code", cleanCode)
-                        })
+        progress = 0.4f
+        val token = userPreferencesRepository.getSessionToken()
+        if (token.isNullOrBlank()) {
+            errorMessage = "Please log in before pairing a device."
+            return@LaunchedEffect
+        }
+        val env = convexMutation("dashboard:checkPairingCode", token, cleanCode)
+        when {
+            env == null -> errorMessage = "Network error. Check your connection and try again."
+            env.optString("status") != "success" ->
+                errorMessage = friendlyPairingError(env.optString("errorMessage", ""))
+            env.isNull("value") ->
+                errorMessage = "Pairing code not found. Make sure the agent is running and the code hasn't expired (10-min limit)."
+            else -> {
+                val v = env.getJSONObject("value")
+                when (v.optString("state")) {
+                    "pending" -> {
+                        pairedDeviceName = v.optString("name", "Monitored PC")
+                        pairedDeviceOs = v.optString("os", "")
+                        currentStep = 3
+                        progress = 0.6f
+                        awaitingConfirm = true
                     }
-                    val checkReq = Request.Builder()
-                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                        .post(checkJson.toString().toRequestBody(mediaType))
-                        .build()
-                    val checkResp = client.newCall(checkReq).execute()
-                    val checkBody = checkResp.body?.string() ?: ""
-                    checkResp.close()
-
-                    if (checkBody.isNotBlank()) {
-                        val checkEnv = JSONObject(checkBody)
-                        if (checkEnv.optString("status") == "success") {
-                            val checkVal = checkEnv.optJSONObject("value")
-                            if (checkVal != null) {
-                                hostname = checkVal.optString("name", "Monitored PC")
-                                val osStr = checkVal.optString("os", "")
-                                if (osStr.isNotBlank()) pairedDeviceOs = osStr
-                            }
-                        }
-                    }
-
-                    // confirmPairing
-                    val confirmJson = JSONObject().apply {
-                        put("path", "dashboard:confirmPairing")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                            put("code", cleanCode)
-                        })
-                    }
-                    val confirmReq = Request.Builder()
-                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                        .post(confirmJson.toString().toRequestBody(mediaType))
-                        .build()
-                    val confirmResp = client.newCall(confirmReq).execute()
-                    val confirmBody = confirmResp.body?.string() ?: ""
-                    confirmResp.close()
-
-                    if (confirmBody.isNotBlank()) {
-                        val env = JSONObject(confirmBody)
-                        if (env.optString("status") == "success") {
-                            val v = env.optJSONObject("value")
-                            if (v != null) {
-                                pairingSuccess = true
-                                deviceId = v.optString("deviceId", "dev_${System.currentTimeMillis()}")
-                                hostname = v.optString("name", hostname)
-                                val osStr = v.optString("os", "")
-                                if (osStr.isNotBlank()) pairedDeviceOs = osStr
-                            } else {
-                                // confirmPairing returned null: code not found in database
-                                err = "Pairing code not found. Make sure the agent is running and the code hasn't expired (10-min limit)."
-                            }
-                        } else {
-                            val errMsg = env.optString("errorMessage", "")
-                            err = when {
-                                errMsg.contains("expired", ignoreCase = true) ||
-                                errMsg.contains("not found", ignoreCase = true) ->
-                                    "Pairing code expired or not found. Run 'nexus pair' on PC for a new code."
-                                errMsg.contains("already paired", ignoreCase = true) ->
-                                    "This device is already paired to another account."
-                                errMsg.contains("Too many", ignoreCase = true) ->
-                                    "Too many attempts. Wait 10 minutes and try again."
-                                errMsg.isNotBlank() -> errMsg
-                                else -> "Pairing failed. Please check the code and try again."
-                            }
-                        }
-                    }
+                    "confirmed" -> errorMessage = "This code was already used. Run 'nexus pair' on the PC for a new one."
+                    else -> errorMessage = "Pairing code expired. Run 'nexus pair' on the PC for a new code."
                 }
-
-                // Step 2: Fallback to devices:confirmPairing with token if dashboard:confirmPairing returned error
-                if (!pairingSuccess && !token.isNullOrBlank()) {
-                    val fallbackJson = JSONObject().apply {
-                        put("path", "devices:confirmPairing")
-                        put("args", JSONObject().apply {
-                            put("token", token)
-                            put("code", cleanCode)
-                        })
-                    }
-                    val fallbackReq = Request.Builder()
-                        .url("https://tidy-newt-65.convex.cloud/api/mutation")
-                        .post(fallbackJson.toString().toRequestBody(mediaType))
-                        .build()
-                    val fallbackResp = client.newCall(fallbackReq).execute()
-                    val fallbackBody = fallbackResp.body?.string() ?: ""
-                    fallbackResp.close()
-
-                    if (fallbackBody.isNotBlank()) {
-                        val env = JSONObject(fallbackBody)
-                        if (env.optString("status") == "success") {
-                            val v = env.optJSONObject("value")
-                            if (v != null) {
-                                pairingSuccess = true
-                                err = null
-                                deviceId = v.optString("deviceId", "dev_${System.currentTimeMillis()}")
-                                hostname = v.optString("name", hostname)
-                                val osStr = v.optString("os", "")
-                                if (osStr.isNotBlank()) pairedDeviceOs = osStr
-                            }
-                        } else {
-                            val errMsg = env.optString("errorMessage", "")
-                            if (errMsg.isNotBlank() && err == null) {
-                                err = if (errMsg.contains("expired", ignoreCase = true)) {
-                                    "Pairing code expired. Run 'nexus pair' on PC for a new code."
-                                } else {
-                                    errMsg
-                                }
-                            }
-                        }
-                    }
-                } else if (!pairingSuccess && err == null && email.isBlank()) {
-                    err = "Please log in before pairing a device."
-                }
-            } catch (e: Exception) {
-                err = "Network error: ${e.message}"
             }
         }
+    }
 
-        if (pairingSuccess) {
-            pairedDeviceName = hostname
-            val detectedOs = when {
-                pairedDeviceOs.contains("win", ignoreCase = true) -> "Windows 11"
-                pairedDeviceOs.contains("pi", ignoreCase = true) -> "Raspberry Pi"
-                pairedDeviceOs.contains("linux", ignoreCase = true) -> "Linux"
-                pairedDeviceOs.isNotBlank() -> pairedDeviceOs.replaceFirstChar { it.uppercase() }
-                else -> "Linux"
+    // 2. The user tapped PAIR: link the computer to this account.
+    LaunchedEffect(confirmRequested) {
+        if (!confirmRequested) return@LaunchedEffect
+        awaitingConfirm = false
+        progress = 0.8f
+        val token = userPreferencesRepository.getSessionToken()
+        if (token.isNullOrBlank()) {
+            errorMessage = "Please log in before pairing a device."
+            return@LaunchedEffect
+        }
+        val env = convexMutation("dashboard:confirmPairing", token, cleanCode)
+        val v = env?.optJSONObject("value")
+        when {
+            env == null -> errorMessage = "Network error. Check your connection and try again."
+            env.optString("status") != "success" ->
+                errorMessage = friendlyPairingError(env.optString("errorMessage", ""))
+            v == null ->
+                errorMessage = "Pairing code not found. Make sure the agent is running and the code hasn't expired (10-min limit)."
+            else -> {
+                pairedDeviceName = v.optString("name", pairedDeviceName)
+                v.optString("os", "").takeIf { it.isNotBlank() }?.let { pairedDeviceOs = it }
+                val detectedOs = displayOs(pairedDeviceOs)
+                deviceRepository.addDevice(
+                    Device(
+                        id = v.optString("deviceId"),
+                        name = pairedDeviceName,
+                        os = detectedOs,
+                        type = if (detectedOs == "Linux") DeviceType.DESKTOP else DeviceType.LAPTOP,
+                        isOnline = true,
+                        lastSeen = System.currentTimeMillis()
+                    )
+                )
+                currentStep = 4
+                progress = 1.0f
+                isDone = true
             }
-            val newDev = Device(
-                id = deviceId,
-                name = hostname,
-                os = detectedOs,
-                type = if (detectedOs == "Linux") DeviceType.DESKTOP else DeviceType.LAPTOP,
-                isOnline = true,
-                lastSeen = System.currentTimeMillis()
-            )
-            deviceRepository.addDevice(newDev)
-            currentStep = 4
-            progress = 1.0f
-            isDone = true
-        } else {
-            errorMessage = err ?: "Pairing failed. Please check the code."
         }
     }
 
@@ -278,7 +179,7 @@ fun PairingProgressScreen(
             // Step 1
             PairingStepRow(
                 stepNumber = 1,
-                title = "Reading QR code (${code.take(8)})",
+                title = "Reading code (${cleanCode.take(8)})",
                 isCompleted = currentStep > 1,
                 isCurrent = currentStep == 1
             )
@@ -288,7 +189,7 @@ fun PairingProgressScreen(
             // Step 2
             PairingStepRow(
                 stepNumber = 2,
-                title = "Connecting to agent via secure channel",
+                title = "Looking up computer",
                 isCompleted = currentStep > 2,
                 isCurrent = currentStep == 2
             )
@@ -298,7 +199,7 @@ fun PairingProgressScreen(
             // Step 3
             PairingStepRow(
                 stepNumber = 3,
-                title = "Verifying device ownership on Convex",
+                title = if (confirmRequested) "Linking to your account" else "Waiting for your OK",
                 isCompleted = currentStep > 3 && isDone,
                 isCurrent = currentStep == 3 && errorMessage == null,
                 isError = errorMessage != null
@@ -316,8 +217,9 @@ fun PairingProgressScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Graphic box
-            Box(
+            if (awaitingConfirm && errorMessage == null) {
+                ConfirmComputerCard(name = pairedDeviceName, os = displayOs(pairedDeviceOs))
+            } else Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(170.dp)
@@ -345,6 +247,7 @@ fun PairingProgressScreen(
                 text = when {
                     isDone -> "Device successfully linked!"
                     errorMessage != null -> errorMessage ?: "Pairing failed"
+                    awaitingConfirm -> "Only pair a computer you own and just set up."
                     else -> "This might take a few seconds..."
                 },
                 fontFamily = PixelFontFamily,
@@ -366,6 +269,24 @@ fun PairingProgressScreen(
                     variant = RetroButtonVariant.Secondary,
                     modifier = Modifier.fillMaxWidth()
                 )
+            } else if (awaitingConfirm && errorMessage == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    RetroButton(
+                        text = "Pair",
+                        onClick = { confirmRequested = true },
+                        variant = RetroButtonVariant.Secondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    RetroButton(
+                        text = "Cancel",
+                        onClick = onBack,
+                        variant = RetroButtonVariant.Outline,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             } else if (errorMessage != null) {
                 RetroButton(
                     text = "Try Again",
@@ -450,3 +371,90 @@ private fun PairingStepRow(
         )
     }
 }
+
+// Shows which computer is asking before it is linked (docs/Security.md §2).
+@Composable
+private fun ConfirmComputerCard(name: String, os: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFDF6E3))
+            .border(2.dp, ArcadeYellow, RoundedCornerShape(12.dp))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "PAIR THIS COMPUTER?",
+                fontFamily = PixelFontFamily,
+                fontSize = 12.sp,
+                color = DeepNavy,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            AppLogo(size = 48.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = name,
+                fontFamily = ReadableFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = DeepNavy,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = os,
+                fontFamily = ReadableFontFamily,
+                fontSize = 14.sp,
+                color = TextDarkGray,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun displayOs(raw: String): String = when {
+    raw.contains("win", ignoreCase = true) -> "Windows 11"
+    raw.contains("pi", ignoreCase = true) -> "Raspberry Pi"
+    raw.contains("linux", ignoreCase = true) -> "Linux"
+    raw.isNotBlank() -> raw.replaceFirstChar { it.uppercase() }
+    else -> "Linux"
+}
+
+private fun friendlyPairingError(errMsg: String): String = when {
+    errMsg.contains("expired", ignoreCase = true) || errMsg.contains("not found", ignoreCase = true) ->
+        "Pairing code expired or not found. Run 'nexus pair' on PC for a new code."
+    errMsg.contains("already paired", ignoreCase = true) -> "This device is already paired to another account."
+    errMsg.contains("Too many", ignoreCase = true) -> "Too many attempts. Wait 10 minutes and try again."
+    errMsg.contains("signed out", ignoreCase = true) -> "Your session expired. Please log in again."
+    errMsg.isNotBlank() -> errMsg
+    else -> "Pairing failed. Please check the code and try again."
+}
+
+// POST a Convex mutation taking { token, code }. Returns the response envelope, or null on a
+// network failure.
+private suspend fun convexMutation(path: String, token: String, code: String): JSONObject? =
+    withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("path", path)
+                put("args", JSONObject().apply {
+                    put("token", token)
+                    put("code", code)
+                })
+            }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req = Request.Builder()
+                .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                .post(body)
+                .build()
+            pairingHttpClient.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty()
+                if (text.isBlank()) null else JSONObject(text)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+private val pairingHttpClient = OkHttpClient()

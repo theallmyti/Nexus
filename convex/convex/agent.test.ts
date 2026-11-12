@@ -93,7 +93,7 @@ test("watchViewer follows setViewer from the device owner", async () => {
   const { t, deviceId } = await setup();
   expect(await t.query(api.agent.watchViewer, { secretHash: HASH })).toBe(0);
 
-  const { token } = await t.action(api.auth.signUp, { email: "owner@example.com", password: "password one" });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "owner@example.com", password: "password one" });
   const [user] = await t.run((ctx) => ctx.db.query("users").collect());
   await t.run((ctx) => ctx.db.patch(deviceId, { userId: user._id }));
 

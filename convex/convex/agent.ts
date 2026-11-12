@@ -8,6 +8,7 @@ import type { Id } from "./_generated/dataModel";
 import { deviceBySecretHash, removeDeviceData } from "./model";
 import { LATEST_AGENT_VERSION, isUnsupported } from "./versions";
 import { RETENTION_MS } from "./summaries";
+import { evaluateSummary } from "./alerts";
 import { v, ConvexError, type Infer } from "convex/values";
 import { battery, capabilities, collectorStatus, driveLive, driveSummary, ramDetail, topProc, usage } from "./validators";
 
@@ -270,6 +271,7 @@ export const pushSummary = mutation({
     }
     await storeSummary(ctx, device._id, serverMinute(now), summary);
     await ctx.db.patch(device._id, { lastSeenAt: now, lastSummaryAt: now });
+    await evaluateSummary(ctx, device, summary);
   },
 });
 
@@ -307,6 +309,9 @@ export const pushSummaries = mutation({
     const oldest = now - RETENTION_MS;
     let stored = 0;
     let skipped = 0;
+    // Only the newest stored minute is checked for alerts: a backlog sent after a day offline
+    // should not raise an alert for every old minute.
+    let newestStored: { minute: number; summary: SummaryFields } | undefined;
     for (const { minuteTs, ...summary } of args.summaries) {
       const minute = serverMinute(minuteTs + offset);
       try {
@@ -321,8 +326,10 @@ export const pushSummaries = mutation({
       }
       await storeSummary(ctx, device._id, minute, summary);
       stored++;
+      if (!newestStored || minute >= newestStored.minute) newestStored = { minute, summary };
     }
     await ctx.db.patch(device._id, { lastSeenAt: now, lastSummaryAt: now });
+    if (newestStored) await evaluateSummary(ctx, device, newestStored.summary);
     return { stored, skipped, tooSoon: false };
   },
 });

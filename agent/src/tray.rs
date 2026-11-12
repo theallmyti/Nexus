@@ -586,9 +586,13 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             std::thread::spawn(move || {
                 #[cfg(windows)]
                 {
-                    // If config is readable, launch the pairing GUI directly without console flash.
-                    // If locked by older admin ACLs, elevate via RunAs so UAC prompt opens the GUI with full access.
-                    let is_accessible = std::fs::File::open(&config_path).is_ok();
+                    // config.toml is SYSTEM + Administrators only (it holds the device secret), so a
+                    // standard user elevates via RunAs; an elevated tray can pair directly.
+                    // Pairing appends the secret, so the check is for write access.
+                    let is_accessible = std::fs::OpenOptions::new()
+                        .append(true)
+                        .open(&config_path)
+                        .is_ok();
                     if is_accessible {
                         use std::os::windows::process::CommandExt;
                         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -667,7 +671,10 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             let data_dir_clone = data_dir.clone();
 
             std::thread::spawn(move || {
-                // 1. Run unpair online via agent exe
+                // 1. Run unpair online via agent exe. It reads the device secret, which only
+                // SYSTEM and Administrators can read, so on Windows it runs elevated (one UAC
+                // prompt for unpair + service restart, step 3).
+                #[cfg(not(windows))]
                 let _ = std::process::Command::new(&exe_path)
                     .args(["unpair", &config_path.to_string_lossy()])
                     .output();
@@ -688,16 +695,27 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                     },
                 );
 
-                // 3. Restart the background service to enter the unpaired waiting loop
+                // 3. Elevated: unpair online, then restart the service to enter the unpaired
+                // waiting loop. Paths come from current_exe and %ProgramData%, not from user input.
+                // They sit inside two nested single-quoted PowerShell strings, so a ' in a path
+                // is doubled twice.
                 #[cfg(windows)]
                 {
+                    let ps_quote = |p: &Path| p.display().to_string().replace('\'', "''''");
+                    let inner = format!(
+                        "& ''{}'' unpair ''{}''; Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue",
+                        ps_quote(&exe_path),
+                        ps_quote(&config_path)
+                    );
                     let _ = std::process::Command::new("powershell")
                         .args([
                             "-NoProfile",
                             "-WindowStyle",
                             "Hidden",
                             "-Command",
-                            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue'",
+                            &format!(
+                                "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -WindowStyle Hidden -Command {inner}'"
+                            ),
                         ])
                         .status();
                 }

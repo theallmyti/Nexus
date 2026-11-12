@@ -23,12 +23,14 @@ export const start = mutation({
     if (!/^[0-9a-f]{64}$/.test(args.secretHash)) {
       throw new ConvexError("invalid device key");
     }
+    // Per device only. A limit shared by all devices let anyone block pairing for everyone with a
+    // few calls a minute using random keys; a rejected call still costs a function call, so the
+    // shared limit did not protect quota either.
     const deviceKey = `pair:${args.secretHash}`;
-    if ((await isLimited(ctx, deviceKey, LIMITS.pairPerDevice)) || (await isLimited(ctx, "pair", LIMITS.pairGlobal))) {
+    if (await isLimited(ctx, deviceKey, LIMITS.pairPerDevice)) {
       throw new ConvexError("Too many pairing codes. Wait a few minutes and try again.");
     }
     await recordEvent(ctx, deviceKey);
-    await recordEvent(ctx, "pair");
     // One open request per device: a new run of `pair` replaces the old code.
     const old = await ctx.db
       .query("pairingRequests")

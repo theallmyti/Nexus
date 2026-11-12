@@ -116,6 +116,39 @@ export default defineSchema({
     ),
   }).index("by_device", ["deviceId"]),
 
+  // Alert limits per account (FR-40). No row = the defaults in alerts.ts.
+  thresholds: defineTable({
+    userId: v.id("users"),
+    cpuTempC: v.number(),
+    gpuTempC: v.number(),
+    ramPct: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Raised when a summary crosses a threshold (FR-43). Kept 7 days, like summaries.
+  alerts: defineTable({
+    userId: v.id("users"),
+    deviceId: v.id("devices"),
+    deviceName: v.string(),
+    type: v.string(), // "cpuTemp" | "gpuTemp" | "ram" | "offline"
+    value: v.number(),
+    threshold: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_user_created", ["userId", "createdAt"])
+    .index("by_device_type_created", ["deviceId", "type", "createdAt"])
+    .index("by_created", ["createdAt"]),
+
+  // Phones that receive FCM pushes for an account (one row per FCM token).
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    fcmToken: v.string(),
+    phoneModel: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_fcmToken", ["fcmToken"]),
+
   // One row per device per minute: averages and peaks of the agent's 1 s samples
   // (docs/Database.md summaries). Collector status is added in Task 14.
   summaries: defineTable({

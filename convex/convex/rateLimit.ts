@@ -6,12 +6,9 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 export type Limit = { max: number; windowMs: number };
 
 export const LIMITS = {
-  // New accounts, all callers together: stops a script creating thousands of accounts.
-  signup: { max: 10, windowMs: 60 * 60 * 1000 },
-  // Pairing codes per device (a normal install needs one every 10 minutes at most) ...
+  // Pairing codes per device (a normal install needs one every 10 minutes at most). No shared
+  // limit across devices: anyone could trip it and block pairing for every user (pairing.ts).
   pairPerDevice: { max: 5, windowMs: 10 * 60 * 1000 },
-  // ... and for all devices together, so random device keys cannot flood the table.
-  pairGlobal: { max: 60, windowMs: 10 * 60 * 1000 },
   // Wrong pairing codes per account: stops guessing someone else's open code.
   wrongCode: { max: 10, windowMs: 10 * 60 * 1000 },
 } satisfies Record<string, Limit>;

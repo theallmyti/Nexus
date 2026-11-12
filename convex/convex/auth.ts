@@ -6,7 +6,8 @@ import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { dummyHash, hashPassword, newToken, tokenHash, verifyPassword } from "./passwords";
 import { sessionUser } from "./model";
-import { MAX_ATTEMPTS, SIGNUP_LIMITED } from "./users";
+import { MAX_ATTEMPTS } from "./users";
+import { verifyTurnstile } from "./turnstile";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8; // FR-01
@@ -17,9 +18,11 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+// Scripts are stopped by a Cloudflare Turnstile token (turnstile.ts), checked before anything else.
 export const signUp = action({
-  args: { email: v.string(), password: v.string() },
+  args: { email: v.string(), password: v.string(), turnstileToken: v.string() },
   handler: async (ctx, args): Promise<{ token: string }> => {
+    await verifyTurnstile(args.turnstileToken, "signup");
     const email = normalizeEmail(args.email);
     if (email.length > MAX_EMAIL || !EMAIL.test(email)) {
       throw new ConvexError("Enter a valid email address.");
@@ -29,9 +32,6 @@ export const signUp = action({
     }
     if (args.password.length > MAX_PASSWORD) {
       throw new ConvexError(`Use at most ${MAX_PASSWORD} characters for the password.`);
-    }
-    if (await ctx.runQuery(internal.users.signupLimited, {})) {
-      throw new ConvexError(SIGNUP_LIMITED);
     }
     const userId = await ctx.runMutation(internal.users.create, {
       email,
@@ -149,7 +149,26 @@ export const deleteAccount = mutation({
       await ctx.db.delete(d._id);
     }
 
-    // 3. Delete the user
+    // 3. Delete alerts, thresholds and push tokens
+    const accountRows = [
+      ...(await ctx.db
+        .query("alerts")
+        .withIndex("by_user_created", (q) => q.eq("userId", userId))
+        .collect()),
+      ...(await ctx.db
+        .query("thresholds")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect()),
+      ...(await ctx.db
+        .query("pushTokens")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect()),
+    ];
+    for (const r of accountRows) {
+      await ctx.db.delete(r._id);
+    }
+
+    // 4. Delete the user
     await ctx.db.delete(userId);
     return { success: true };
   },

@@ -276,7 +276,8 @@ begin
     SaveStringToFile(DataDir() + '\control.json', '{"paused":false}', False);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\control.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\status.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    // config.toml: SYSTEM + Administrators only (holds the device secret; docs/Security.md §6).
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /inheritance:r /grant:r *S-1-5-18:F *S-1-5-32-544:F', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
     if WizardIsTaskSelected('addtopath') then

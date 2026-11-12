@@ -16,7 +16,7 @@ afterEach(() => vi.useRealTimers());
 
 test("sign up stores a scrypt hash, never the password, and signs in", async () => {
   const t = convexTest(schema, modules);
-  const { token } = await t.action(api.auth.signUp, { email: " Aditya@Example.com ", password: PASSWORD });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: " Aditya@Example.com ", password: PASSWORD });
   const [user] = await t.run((ctx) => ctx.db.query("users").collect());
   expect(user.email).toBe(EMAIL); // lowercase, trimmed
   expect(user.passwordHash).toMatch(/^scrypt\$32768\$8\$1\$/);
@@ -28,15 +28,15 @@ test("sign up stores a scrypt hash, never the password, and signs in", async () 
 
 test("sign up rejects short passwords, bad emails and duplicates", async () => {
   const t = convexTest(schema, modules);
-  await expect(t.action(api.auth.signUp, { email: EMAIL, password: "short" })).rejects.toThrow(/at least 8/);
-  await expect(t.action(api.auth.signUp, { email: "not-an-email", password: PASSWORD })).rejects.toThrow(/valid email/);
-  await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
-  await expect(t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD })).rejects.toThrow(/already exists/);
+  await expect(t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: "short" })).rejects.toThrow(/at least 8/);
+  await expect(t.action(api.auth.signUp, { turnstileToken: "test-token", email: "not-an-email", password: PASSWORD })).rejects.toThrow(/valid email/);
+  await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
+  await expect(t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD })).rejects.toThrow(/already exists/);
 });
 
 test("wrong password and unknown email give the same message", async () => {
   const t = convexTest(schema, modules);
-  await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
   await expect(t.action(api.auth.signIn, { email: EMAIL, password: "wrong password" })).rejects.toThrow(
     "Wrong email or password.",
   );
@@ -49,7 +49,7 @@ test("wrong password and unknown email give the same message", async () => {
 
 test("sign in is blocked after 5 failed attempts for 15 minutes (T-02)", async () => {
   const t = convexTest(schema, modules);
-  await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
   for (let i = 0; i < 5; i++) {
     await expect(t.action(api.auth.signIn, { email: EMAIL, password: "wrong password" })).rejects.toThrow(/Wrong/);
   }
@@ -62,7 +62,7 @@ test("sign in is blocked after 5 failed attempts for 15 minutes (T-02)", async (
 
 test("sign out ends the session; idle sessions expire after 30 days (FR-02, FR-03, T-06)", async () => {
   const t = convexTest(schema, modules);
-  const { token } = await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
   await t.mutation(api.auth.signOut, { token });
   expect(await t.query(api.auth.me, { token })).toBeNull();
 
@@ -78,14 +78,14 @@ test("sign up and sign in reject excessive length email and password to prevent 
   const t = convexTest(schema, modules);
   const hugePassword = "a".repeat(257);
   const hugeEmail = "a".repeat(250) + "@example.com";
-  await expect(t.action(api.auth.signUp, { email: EMAIL, password: hugePassword })).rejects.toThrow(/at most 256/);
-  await expect(t.action(api.auth.signUp, { email: hugeEmail, password: PASSWORD })).rejects.toThrow(/valid email/);
+  await expect(t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: hugePassword })).rejects.toThrow(/at most 256/);
+  await expect(t.action(api.auth.signUp, { turnstileToken: "test-token", email: hugeEmail, password: PASSWORD })).rejects.toThrow(/valid email/);
   await expect(t.action(api.auth.signIn, { email: EMAIL, password: hugePassword })).rejects.toThrow(/Wrong email or password/);
 });
 
 test("exportData returns user profile and paired devices for portability (GDPR Art. 20)", async () => {
   const t = convexTest(schema, modules);
-  const { token } = await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
   const exported = await t.query(api.auth.exportData, { token });
   expect(exported.user.email).toBe(EMAIL);
   expect(Array.isArray(exported.devices)).toBe(true);
@@ -93,7 +93,7 @@ test("exportData returns user profile and paired devices for portability (GDPR A
 
 test("deleteAccount cascades deletion of user, sessions, and devices (GDPR Art. 17)", async () => {
   const t = convexTest(schema, modules);
-  const { token } = await t.action(api.auth.signUp, { email: EMAIL, password: PASSWORD });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
   expect(await t.query(api.auth.me, { token })).toEqual({ email: EMAIL });
 
   await t.mutation(api.auth.deleteAccount, { token });

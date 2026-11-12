@@ -31,6 +31,10 @@ class AuthViewModel(
     var registerEmailError by mutableStateOf<String?>(null)
     var registerPasswordError by mutableStateOf<String?>(null)
     var registerConfirmPasswordError by mutableStateOf<String?>(null)
+    // Cloudflare Turnstile: the current single-use token, and a counter that resets the widget
+    // after every attempt so the next one gets a fresh token.
+    var turnstileToken by mutableStateOf<String?>(null)
+    var turnstileResetSignal by mutableStateOf(0)
 
     // Forgot Password Form State
     var forgotEmail by mutableStateOf("")
@@ -66,6 +70,11 @@ class AuthViewModel(
 
     fun register(onSuccess: () -> Unit) {
         if (!validateRegister()) return
+        val token = turnstileToken
+        if (token.isNullOrBlank()) {
+            generalError = "Please complete the bot check below."
+            return
+        }
 
         isLoading = true
         generalError = null
@@ -75,10 +84,14 @@ class AuthViewModel(
                 RegisterRequest(
                     name = registerName.trim(),
                     email = registerEmail.trim(),
-                    password = registerPassword
+                    password = registerPassword,
+                    turnstileToken = token
                 )
             )
             isLoading = false
+            // The token was spent on this attempt (or is unusable): get a fresh one.
+            turnstileToken = null
+            turnstileResetSignal++
             result.fold(
                 onSuccess = { user ->
                     preferencesRepository.saveUserInfo(user.id, user.name, user.email)

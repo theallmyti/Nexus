@@ -22,6 +22,8 @@ data class LoginRequest(
 data class RegisterRequest(
     val name: String,
     val email: String,
-    val password: String
+    val password: String,
+    // Cloudflare Turnstile token from the sign-up widget; single use, verified by auth:signUp.
+    val turnstileToken: String = ""
 )
 

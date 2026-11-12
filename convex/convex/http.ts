@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
+import { TURNSTILE_SITEKEY } from "./turnstile";
 
 const http = httpRouter();
 
@@ -186,6 +187,71 @@ export async function handlePair(request: Request): Promise<Response> {
     },
   });
 }
+
+// Turnstile widget for the Android app's sign-up screen, loaded in a WebView. The app reads the
+// token through a JavaScript bridge (`NexusTurnstile`) and sends it with auth:signUp, where it is
+// verified server-side (turnstile.ts). The page holds no secret.
+export function handleTurnstile(): Response {
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus — Bot check</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    body { display: flex; justify-content: center; align-items: center; min-height: 72px; }
+  </style>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=nexusTurnstileLoaded&render=explicit" async defer></script>
+  <script nonce="${nonce}">
+    function send(method, value) {
+      if (window.NexusTurnstile && typeof window.NexusTurnstile[method] === "function") {
+        window.NexusTurnstile[method](value || "");
+      }
+    }
+    // Called by api.js. The app calls reset() (via evaluateJavascript) after each sign-up attempt,
+    // because a token can be redeemed only once.
+    window.nexusTurnstileLoaded = function () {
+      window.nexusWidgetId = turnstile.render("#widget", {
+        sitekey: "${TURNSTILE_SITEKEY}",
+        action: "signup",
+        theme: "dark",
+        callback: function (token) { send("onToken", token); },
+        "expired-callback": function () { send("onExpired"); },
+        "error-callback": function (code) { send("onError", String(code)); },
+      });
+    };
+    window.nexusReset = function () {
+      if (window.turnstile && window.nexusWidgetId !== undefined) turnstile.reset(window.nexusWidgetId);
+    };
+  </script>
+</head>
+<body><div id="widget"></div></body>
+</html>`;
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+      "Content-Security-Policy": [
+        "default-src 'none'",
+        "style-src 'unsafe-inline'",
+        `script-src 'nonce-${nonce}' https://challenges.cloudflare.com`,
+        "frame-src https://challenges.cloudflare.com",
+        "connect-src https://challenges.cloudflare.com",
+      ].join("; "),
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
+http.route({
+  path: "/turnstile",
+  method: "GET",
+  handler: httpAction(async () => handleTurnstile()),
+});
 
 http.route({
   path: "/pair",

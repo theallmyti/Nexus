@@ -159,6 +159,7 @@ class MockAuthRepository(
                     put("args", JSONObject().apply {
                         put("email", email)
                         put("password", request.password)
+                        put("turnstileToken", request.turnstileToken)
                     })
                 }
                 val req = Request.Builder()
@@ -191,11 +192,11 @@ class MockAuthRepository(
                             return Result.success(user)
                         }
                     } else {
-                        val err = envelope.optString("errorMessage")
-                        if (err.isNotBlank() && (err.contains("already registered", ignoreCase = true) || err.contains("at least 8 characters", ignoreCase = true))) {
-                            _authState.value = _authState.value.copy(isLoading = false, error = err)
-                            return Result.failure(Exception(err))
-                        }
+                        // Any answer from the server is final (bot check, existing account, ...):
+                        // never fall through to the local offline registration below.
+                        val err = envelope.optString("errorMessage").ifBlank { "Registration failed. Please try again." }
+                        _authState.value = _authState.value.copy(isLoading = false, error = err)
+                        return Result.failure(Exception(err))
                     }
                 }
             } catch (_: Exception) {

@@ -276,7 +276,11 @@ begin
     SaveStringToFile(DataDir() + '\control.json', '{"paused":false}', False);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\control.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\status.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    // config.toml holds the device secret and the server URL the SYSTEM service talks to:
+    // SYSTEM + Administrators only, no inherited Users read (docs/Security.md §6). Re-applied on
+    // upgrade, which also removes the Users:Modify grant older installers added. The tray elevates
+    // (UAC) for pair and unpair, which need the secret.
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /inheritance:r /grant:r *S-1-5-18:F *S-1-5-32-544:F', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
     if WizardIsTaskSelected('addtopath') then

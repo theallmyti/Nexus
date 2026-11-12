@@ -91,6 +91,12 @@ export async function removeDeviceData(ctx: MutationCtx, device: Doc<"devices">)
     .collect()) {
     await ctx.db.delete(r._id);
   }
+  for (const a of await ctx.db
+    .query("alerts")
+    .withIndex("by_device_type_created", (q) => q.eq("deviceId", device._id))
+    .collect()) {
+    await ctx.db.delete(a._id);
+  }
   await ctx.db.delete(device._id);
   await ctx.scheduler.runAfter(0, internal.summaries.deleteForDevice, { deviceId: device._id });
 }

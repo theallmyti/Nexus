@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 async function signedIn(t: ReturnType<typeof convexTest>, email = "aditya@example.com") {
-  const { token } = await t.action(api.auth.signUp, { email, password: "password one" });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email, password: "password one" });
   return token;
 }
 
@@ -100,7 +100,7 @@ test("confirming needs a signed-in user, and status needs the right device", asy
 test("a device already owned by another user cannot be hijacked by pairing", async () => {
   const t = convexTest(schema, modules);
   const ownerToken = await signedIn(t);
-  const attackerToken = (await t.action(api.auth.signUp, { email: "attacker@example.com", password: "password two" })).token;
+  const attackerToken = (await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "attacker@example.com", password: "password two" })).token;
 
   // Owner pairs the device first
   const { code: ownerCode } = await t.mutation(api.pairing.start, DEVICE);

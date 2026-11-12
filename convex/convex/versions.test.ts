@@ -15,7 +15,7 @@ test("compareVersions compares numerically, not as text", () => {
 });
 
 async function owned(t: ReturnType<typeof convexTest>, agentVersion?: string) {
-  const { token } = await t.action(api.auth.signUp, { email: "v@example.com", password: "password one" });
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "v@example.com", password: "password one" });
   await t.run(async (ctx) => {
     const [user] = await ctx.db.query("users").collect();
     await ctx.db.insert("devices", { userId: user._id, name: "pc", secretHash: HASH, lastSeenAt: Date.now(), isFake: false, agentVersion });

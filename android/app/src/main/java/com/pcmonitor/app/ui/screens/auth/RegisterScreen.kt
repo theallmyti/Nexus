@@ -30,6 +30,7 @@ import com.pcmonitor.app.ui.components.RetroButton
 import com.pcmonitor.app.ui.components.RetroButtonVariant
 import com.pcmonitor.app.ui.components.RetroTextField
 import com.pcmonitor.app.ui.components.RetroTopBar
+import com.pcmonitor.app.ui.components.TurnstileWidget
 import com.pcmonitor.app.ui.theme.ArcadeYellow
 import com.pcmonitor.app.ui.theme.CriticalRed
 import com.pcmonitor.app.ui.theme.DeepNavy
@@ -150,12 +151,21 @@ fun RegisterScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Cloudflare Turnstile bot check (required by auth:signUp)
+            TurnstileWidget(
+                resetSignal = viewModel.turnstileResetSignal,
+                onToken = { viewModel.turnstileToken = it }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Register Button
             RetroButton(
                 text = "Create Account",
                 onClick = { viewModel.register(onSuccess = onNavigateToHome) },
+                enabled = viewModel.turnstileToken != null,
                 isLoading = viewModel.isLoading,
                 variant = RetroButtonVariant.Secondary,
                 modifier = Modifier.fillMaxWidth()
