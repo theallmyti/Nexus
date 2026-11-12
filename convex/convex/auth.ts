@@ -145,6 +145,14 @@ export const deleteAccount = mutation({
         await ctx.db.delete(pr._id);
       }
 
+      // Delete per-drive thresholds for this device
+      for (const dt of await ctx.db
+        .query("diskThresholds")
+        .withIndex("by_device", (q) => q.eq("deviceId", d._id))
+        .collect()) {
+        await ctx.db.delete(dt._id);
+      }
+
       // Delete the device row
       await ctx.db.delete(d._id);
     }
@@ -153,7 +161,7 @@ export const deleteAccount = mutation({
     const accountRows = [
       ...(await ctx.db
         .query("alerts")
-        .withIndex("by_user_created", (q) => q.eq("userId", userId))
+        .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .collect()),
       ...(await ctx.db
         .query("thresholds")

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -49,10 +50,12 @@ fun AddDeviceScreen(
     onScanQrClick: () -> Unit,
     onEnterCodeClick: () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.background.red < 0.5f
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "Add New Device",
@@ -94,7 +97,7 @@ fun AddDeviceScreen(
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
-                color = TextWhite,
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
                 lineHeight = 26.sp
             )
@@ -126,8 +129,8 @@ fun AddDeviceScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF162640))
-                    .border(1.dp, Color(0xFF2A3F5F), RoundedCornerShape(10.dp))
+                    .background(if (isDark) Color(0xFF162640) else Color(0xFFF3ECE0))
+                    .border(1.dp, if (isDark) Color(0xFF2A3F5F) else Color(0xFF8B7355), RoundedCornerShape(10.dp))
                     .padding(16.dp)
             ) {
                 Column {
@@ -143,7 +146,7 @@ fun AddDeviceScreen(
                         text = "1. On your Windows PC, run nexus-setup-0.2.1.exe to install the Nexus agent\n2. The QR code and 6-digit code will appear during setup\n3. Tap 'Scan QR Code' above and point your phone at the screen!",
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
-                        color = TextWhite,
+                        color = if (isDark) TextWhite else Color(0xFF2C2214),
                         lineHeight = 19.sp
                     )
                 }

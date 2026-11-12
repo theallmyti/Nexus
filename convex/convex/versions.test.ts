@@ -65,3 +65,27 @@ test("hello stores the CPU model and memory speed, and the site gets them", asyn
   const { devices } = await t.query(api.dashboard.overview, { token });
   expect(devices[0].capabilities).toMatchObject({ cpuModel: "AMD Ryzen 7 4800H", ramSpeedMTs: 3200 });
 });
+
+test("latestAgentVersion and checkVersion queries return version details", async () => {
+  const t = convexTest(schema, modules);
+  const latest = await t.query(api.versions.latestAgentVersion, {});
+  expect(latest).toEqual({ latest: LATEST_AGENT_VERSION, minimum: MIN_AGENT_VERSION });
+
+  const current = await t.query(api.versions.checkVersion, { version: LATEST_AGENT_VERSION });
+  expect(current).toEqual({
+    current: LATEST_AGENT_VERSION,
+    latest: LATEST_AGENT_VERSION,
+    minimum: MIN_AGENT_VERSION,
+    isOutdated: false,
+    isUnsupported: false,
+  });
+
+  const old = await t.query(api.versions.checkVersion, { version: "0.0.1" });
+  expect(old).toEqual({
+    current: "0.0.1",
+    latest: LATEST_AGENT_VERSION,
+    minimum: MIN_AGENT_VERSION,
+    isOutdated: true,
+    isUnsupported: true,
+  });
+});

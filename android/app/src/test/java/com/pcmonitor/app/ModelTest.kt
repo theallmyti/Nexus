@@ -47,4 +47,36 @@ class ModelTest {
         assertEquals("0d 1h 1m", usage.uptimeFormatted)
         assertEquals("2h 0m", usage.activeTimeTodayFormatted)
     }
+
+    @Test
+    fun testGpuStatsRetentionOnPartialSnapshot() {
+        val initialGpu = com.pcmonitor.app.data.model.GpuStats(
+            name = "NVIDIA GeForce RTX 3060",
+            temperature = 48f,
+            utilization = 12f,
+            vramUsedMb = 1024L,
+            vramTotalMb = 6144L,
+            powerWatts = 25f,
+            clockSpeedMhz = 1400f
+        )
+        val initialStats = com.pcmonitor.app.data.model.HardwareStats(
+            cpu = CpuStats(totalUtilization = 15f),
+            gpu = initialGpu
+        )
+
+        // Incoming partial snapshot without GPU (e.g. agent idle tick)
+        val incomingPartial = com.pcmonitor.app.data.model.HardwareStats(
+            cpu = CpuStats(totalUtilization = 20f),
+            gpu = null
+        )
+
+        // Merged stats must retain previous valid GPU
+        val mergedStats = incomingPartial.copy(
+            gpu = incomingPartial.gpu ?: initialStats.gpu
+        )
+
+        assertEquals("NVIDIA GeForce RTX 3060", mergedStats.gpu?.name)
+        assertEquals(48f, mergedStats.gpu?.temperature ?: 0f, 0.01f)
+        assertEquals(20f, mergedStats.cpu.totalUtilization, 0.01f)
+    }
 }

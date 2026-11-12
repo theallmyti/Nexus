@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
@@ -179,6 +180,9 @@ fun PCMonitorNavGraph(
                 onBack = { navController.popBackStack() },
                 onNavigateToHistory = { devId ->
                     navController.navigate(Screen.History.createRoute(devId))
+                },
+                onNavigateToThresholds = { devId ->
+                    navController.navigate(Screen.ThresholdSettings.createRoute(devId))
                 }
             )
         }
@@ -254,9 +258,23 @@ fun PCMonitorNavGraph(
         }
 
         // Threshold Settings Screen
-        composable(Screen.ThresholdSettings.route) {
-            val thresholdsViewModel = remember {
-                ThresholdSettingsViewModel(app.userPreferencesRepository, app.deviceRepository)
+        composable(
+            route = Screen.ThresholdSettings.route,
+            arguments = listOf(
+                navArgument("deviceId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val deviceId = backStackEntry.arguments?.getString("deviceId")
+            val thresholdsViewModel = remember(deviceId) {
+                ThresholdSettingsViewModel(
+                    preferencesRepository = app.userPreferencesRepository,
+                    deviceRepository = app.deviceRepository,
+                    initialDeviceId = deviceId
+                )
             }
             ThresholdSettingsScreen(
                 viewModel = thresholdsViewModel,
@@ -319,7 +337,7 @@ private fun MainContainerScreen(
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = DeepNavy
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -373,7 +391,7 @@ private fun MainContainerScreen(
                     SettingsScreen(
                         viewModel = settingsViewModel,
                         onNavigateToThresholds = {
-                            rootNavController.navigate(Screen.ThresholdSettings.route)
+                            rootNavController.navigate(Screen.ThresholdSettings.createRoute())
                         },
                         onSignedOut = {
                             rootNavController.navigate(Screen.Login.route) {

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.ui.theme.BottomNavBackground
 import com.pcmonitor.app.ui.theme.CriticalRed
+import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.PixelBorderColor
 import com.pcmonitor.app.ui.theme.PixelGreen
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
@@ -64,12 +66,14 @@ fun RetroBottomNavBar(
     onTabSelected: (BottomNavTab) -> Unit,
     alertBadgeCount: Int = 0
 ) {
-    val borderColor = PixelBorderColor
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val navBg = if (isDark) BottomNavBackground else Color(0xFFF3ECE0)
+    val borderColor = if (isDark) PixelBorderColor else Color(0xFFD4C7B0)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(BottomNavBackground)
+            .background(navBg)
             .drawBehind {
                 // Chunky retro top border
                 drawLine(
@@ -91,8 +95,8 @@ fun RetroBottomNavBar(
         ) {
             BottomNavTab.entries.forEach { tab ->
                 val isSelected = selectedTab == tab
-                val activeColor = PixelGreen
-                val inactiveColor = Color(0xFF64748B)
+                val activeColor = if (isDark) PixelGreen else Color(0xFF2E7D32)
+                val inactiveColor = if (isDark) Color(0xFF64748B) else Color(0xFF8B7355)
 
                 Column(
                     modifier = Modifier

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -161,7 +162,7 @@ fun PairingProgressScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "Pairing Device",
@@ -365,7 +366,7 @@ private fun PairingStepRow(
             fontSize = 14.sp,
             color = when {
                 isError -> CriticalRed
-                isCompleted || isCurrent -> TextWhite
+                isCompleted || isCurrent -> MaterialTheme.colorScheme.onBackground
                 else -> TextDarkGray
             }
         )

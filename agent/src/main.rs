@@ -781,6 +781,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     // None on machines without a battery; then no battery data is sent.
     let mut battery_reader = battery::BatteryReader::new();
     let mut battery_now: Option<battery::BatteryStats> = None;
+    let mut gpu_now: Option<gpu::GpuStats> = None;
 
     let device_name = System::host_name().unwrap_or_else(|_| "unknown".to_string());
     say!(
@@ -1099,13 +1100,17 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             if supervisor.can_run("gpu") {
                 let g = gpu_reader.read(live).await;
                 if g.is_some() {
+                    gpu_now = g.clone();
                     supervisor.record_success("gpu");
+                    g
                 } else {
-                    supervisor.record_failure("gpu");
+                    if live && gpu_now.is_none() {
+                        supervisor.record_failure("gpu");
+                    }
+                    gpu_now.clone()
                 }
-                g
             } else {
-                None
+                gpu_now.clone()
             }
         } else {
             None
@@ -1216,7 +1221,8 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                     ]),
                 );
             }
-            if let Some(g) = &gpu {
+            let effective_gpu = gpu.as_ref().or(gpu_now.as_ref());
+            if let Some(g) = effective_gpu {
                 args.insert("gpu".to_string(), gpu_value(g));
             }
             if let Some(b) = &battery_now {

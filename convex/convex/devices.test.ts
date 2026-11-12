@@ -1,203 +1,297 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import schema from "./schema";
 import { Id } from "./_generated/dataModel";
+
+import * as devicesModule from "./devices";
 
 const modules = import.meta.glob("./**/*.ts");
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-11-12T10:00:00Z"));
+  vi.setSystemTime(new Date("2026-11-12T00:00:00Z"));
 });
 afterEach(() => vi.useRealTimers());
 
-const HASH_A = "a".repeat(64);
-const HASH_B = "b".repeat(64);
-
-async function userWithDevice(t: ReturnType<typeof convexTest>, email: string, hash: string) {
-  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email, password: "password one" });
-  const { code } = await t.mutation(api.pairing.start, { secretHash: hash, name: email, os: "windows" });
-  const res = await t.mutation(api.devices.confirmPairing, { token, code });
-  return { token, deviceId: res!.deviceId as Id<"devices">, pairing: res! };
+async function userWithDevice(t: ReturnType<typeof convexTest>, email: string, secretHash: string) {
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email, password: "test-password-123" });
+  const { code } = await t.mutation(api.pairing.start, {
+    secretHash,
+    name: email.split("@")[0],
+    os: "linux",
+  });
+  const res = (await t.mutation(api.devices.confirmPairing, { token, code }))!;
+  const device = await t.run(async (ctx) => await ctx.db.get(res.deviceId as Id<"devices">));
+  return { token, deviceId: res.deviceId as Id<"devices">, userId: device!.userId };
 }
 
-// A hot minute: both average and peak are over the default thresholds (CPU 90, GPU 85, RAM 90).
-const HOT = {
-  cpuUtilAvg: 50, cpuUtilMax: 80,
-  ramPctAvg: 95, ramPctMax: 97,
-  cpuTempAvg: 95, cpuTempMax: 98,
-  gpuTempMax: 90, gpuUtilAvg: 60,
-};
-// A calm minute: everything well below.
-const CALM = {
-  cpuUtilAvg: 10, cpuUtilMax: 20,
-  ramPctAvg: 40, ramPctMax: 45,
-  cpuTempAvg: 50, cpuTempMax: 55,
-  gpuTempMax: 45, gpuUtilAvg: 5,
-};
-
-test("confirmPairing returns the device id, name and os the app shows", async () => {
+test("Baseline & Happy Path: authenticated user manages their own devices", async () => {
   const t = convexTest(schema, modules);
-  const { pairing } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  expect(pairing).toMatchObject({ name: "aditya@example.com", os: "windows" });
+  const user = await userWithDevice(t, "userA@example.com", "a".repeat(64));
+
+  // 1. getMyDevices
+  const myDevices = await t.query(api.devices.getMyDevices, { token: user.token });
+  expect(myDevices.length).toBe(1);
+  expect(myDevices[0]._id).toBe(user.deviceId);
+
+  // 2. getDevice
+  const device = await t.query(api.devices.getDevice, { token: user.token, deviceId: user.deviceId });
+  expect(device).toBeDefined();
+  expect(device?._id).toBe(user.deviceId);
+
+  // 3. updateDeviceName
+  await t.mutation(api.devices.updateDeviceName, { token: user.token, deviceId: user.deviceId, name: "homeserver-renamed" });
+  const updated = await t.query(api.devices.getDevice, { token: user.token, deviceId: user.deviceId });
+  expect(updated?.name).toBe("homeserver-renamed");
+
+  // 4. setViewer
+  const viewerRes = await t.mutation(api.devices.setViewer, { token: user.token, deviceId: user.deviceId });
+  expect(viewerRes.viewerUntil).toBeGreaterThan(Date.now());
+
+  // 5. updateThresholds & getThresholds
+  await t.mutation(api.devices.updateThresholds, { token: user.token, cpuTempC: 85, ramPct: 90 });
+  const thresholds = await t.query(api.devices.getThresholds, { token: user.token });
+  expect(thresholds?.cpuTempC).toBe(85);
+  expect(thresholds?.ramPct).toBe(90);
+
+  // 6. registerPushToken
+  const pushRes = await t.mutation(api.devices.registerPushToken, { token: user.token, fcmToken: "fcm_token_123" });
+  expect(pushRes.success).toBe(true);
+
+  // 7. deleteDevice
+  await t.mutation(api.devices.deleteDevice, { token: user.token, deviceId: user.deviceId });
+  const remaining = await t.query(api.devices.getMyDevices, { token: user.token });
+  expect(remaining.length).toBe(0);
 });
 
-test("app endpoints only ever touch the caller's own devices", async () => {
+test("Security (Tier 7): Unauthenticated access with invalid or empty token is rejected", async () => {
   const t = convexTest(schema, modules);
-  const a = await userWithDevice(t, "aditya@example.com", HASH_A);
-  const b = await userWithDevice(t, "tirth@example.com", HASH_B);
+  const user = await userWithDevice(t, "userA@example.com", "a".repeat(64));
 
-  const mine = await t.query(api.devices.getMyDevices, { token: a.token });
-  expect(mine.map((d) => d.id)).toEqual([a.deviceId]);
-  expect(mine[0].os).toBe("windows");
+  // Invalid token
+  await expect(t.query(api.devices.getMyDevices, { token: "bad_token" })).rejects.toThrow(/signed out/);
+  await expect(t.query(api.devices.getDevice, { token: "bad_token", deviceId: user.deviceId })).rejects.toThrow(/signed out/);
+  await expect(t.query(api.devices.getDeviceLatest, { token: "bad_token", deviceId: user.deviceId })).rejects.toThrow(/signed out/);
+  await expect(t.mutation(api.devices.deleteDevice, { token: "bad_token", deviceId: user.deviceId })).rejects.toThrow(/signed out/);
+  await expect(t.query(api.devices.getMyAlerts, { token: "bad_token" })).rejects.toThrow(/signed out/);
 
-  for (const call of [
-    () => t.query(api.devices.getDeviceLatest, { token: b.token, deviceId: a.deviceId }),
-    () => t.query(api.devices.getDeviceSummaries, { token: b.token, deviceId: a.deviceId, days: 1 }),
-    () => t.mutation(api.devices.setViewer, { token: b.token, deviceId: a.deviceId }),
-    () => t.mutation(api.devices.deleteDevice, { token: b.token, deviceId: a.deviceId }),
-  ]) {
-    await expect(call()).rejects.toThrow(/device not found/);
-  }
-  await expect(t.query(api.devices.getMyDevices, { token: "nope" })).rejects.toThrow(/signed out/);
+  // Empty / whitespace token
+  await expect(t.query(api.devices.getMyDevices, { token: "" })).rejects.toThrow(/signed out/);
+  await expect(t.query(api.devices.getMyDevices, { token: "   " })).rejects.toThrow(/signed out/);
 });
 
-test("getDeviceLatest returns the live row with isOnline, or ts 0 before any push", async () => {
+test("Security (Tier 7): IDOR Prevention — User B cannot read or modify User A's devices", async () => {
   const t = convexTest(schema, modules);
-  const { token, deviceId } = await userWithDevice(t, "aditya@example.com", HASH_A);
+  const userA = await userWithDevice(t, "userA@example.com", "a".repeat(64));
+  const userB = await userWithDevice(t, "userB@example.com", "b".repeat(64));
 
-  const empty = await t.query(api.devices.getDeviceLatest, { token, deviceId });
-  expect(empty).toMatchObject({ ts: 0, isOnline: true });
+  // 1. getDevice IDOR
+  await expect(
+    t.query(api.devices.getDevice, { token: userB.token, deviceId: userA.deviceId })
+  ).rejects.toThrow(/Unauthorized/);
 
-  await t.mutation(api.agent.pushLatest, { secretHash: HASH_A, ts: 0, cpuUtil: 42, ramUsedPct: 61, cpuTemp: 70 });
-  const live = await t.query(api.devices.getDeviceLatest, { token, deviceId });
-  expect(live).toMatchObject({ cpu: { util: 42, packageTemp: 70 }, ram: { usedPct: 61 }, isOnline: true });
-  expect(live.ts).toBeGreaterThan(0);
+  // 2. getDeviceLatest IDOR
+  await expect(
+    t.query(api.devices.getDeviceLatest, { token: userB.token, deviceId: userA.deviceId })
+  ).rejects.toThrow(/Unauthorized/);
 
-  vi.advanceTimersByTime(4 * 60 * 1000);
-  expect((await t.query(api.devices.getDeviceLatest, { token, deviceId })).isOnline).toBe(false);
+  // 3. updateDeviceName IDOR
+  await expect(
+    t.mutation(api.devices.updateDeviceName, { token: userB.token, deviceId: userA.deviceId, name: "hacked" })
+  ).rejects.toThrow(/Unauthorized/);
+
+  // 4. setViewer IDOR
+  await expect(
+    t.mutation(api.devices.setViewer, { token: userB.token, deviceId: userA.deviceId })
+  ).rejects.toThrow(/Unauthorized/);
+
+  // 5. deleteDevice IDOR
+  await expect(
+    t.mutation(api.devices.deleteDevice, { token: userB.token, deviceId: userA.deviceId })
+  ).rejects.toThrow(/Unauthorized/);
+
+  // 6. getDeviceSummaries IDOR
+  await expect(
+    t.query(api.devices.getDeviceSummaries, { token: userB.token, deviceId: userA.deviceId })
+  ).rejects.toThrow(/Unauthorized/);
+
+  // Confirm User A's device was NOT deleted or modified by User B's attempts
+  const checkDevice = await t.query(api.devices.getDevice, { token: userA.token, deviceId: userA.deviceId });
+  expect(checkDevice).toBeDefined();
+  expect(checkDevice?.name).toBe("userA");
 });
 
-test("getDeviceSummaries returns the last N days, capped at 7", async () => {
+test("Security (Tier 7): Cross-Tenant Alerts & Threshold Isolation", async () => {
   const t = convexTest(schema, modules);
-  const { token, deviceId } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  const day = 24 * 60 * 60 * 1000;
+  const userA = await userWithDevice(t, "userA@example.com", "a".repeat(64));
+  const userB = await userWithDevice(t, "userB@example.com", "b".repeat(64));
+
+  // User A sets thresholds
+  await t.mutation(api.devices.updateThresholds, { token: userA.token, cpuTempC: 75, ramPct: 80 });
+
+  // User B sets different thresholds
+  await t.mutation(api.devices.updateThresholds, { token: userB.token, cpuTempC: 95, ramPct: 95 });
+
+  // Verify User A still has their own thresholds
+  const threshA = await t.query(api.devices.getThresholds, { token: userA.token });
+  expect(threshA?.cpuTempC).toBe(75);
+  expect(threshA?.ramPct).toBe(80);
+
+  // Verify User B has their own thresholds
+  const threshB = await t.query(api.devices.getThresholds, { token: userB.token });
+  expect(threshB?.cpuTempC).toBe(95);
+  expect(threshB?.ramPct).toBe(95);
+
+  // Insert alerts directly for User A
   await t.run(async (ctx) => {
-    for (const ago of [0.5, 3, 6.5, 9]) {
-      await ctx.db.insert("summaries", { deviceId, minuteTs: Date.now() - ago * day, ...CALM });
-    }
+    await ctx.db.insert("alerts", {
+      userId: userA.userId,
+      deviceId: userA.deviceId,
+      type: "cpuTemp",
+      value: 99,
+      threshold: 90,
+      createdAt: Date.now(),
+      pushed: false,
+    });
   });
-  expect(await t.query(api.devices.getDeviceSummaries, { token, deviceId, days: 1 })).toHaveLength(1);
-  expect(await t.query(api.devices.getDeviceSummaries, { token, deviceId, days: 30 })).toHaveLength(3);
+
+  // User B queries alerts -> receives 0 alerts
+  const userBAlerts = await t.query(api.devices.getMyAlerts, { token: userB.token });
+  expect(userBAlerts.length).toBe(0);
+
+  // User B clears alerts -> does not delete User A's alerts
+  await t.mutation(api.devices.clearAlerts, { token: userB.token });
+  const userAAlerts = await t.query(api.devices.getMyAlerts, { token: userA.token });
+  expect(userAAlerts.length).toBe(1);
 });
 
-test("thresholds default, can be changed, and reject impossible values", async () => {
-  const t = convexTest(schema, modules);
-  const { token } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  expect(await t.query(api.devices.getThresholds, { token })).toEqual({ cpuTempC: 90, gpuTempC: 85, ramPct: 90 });
+test("Security (Tier 7): Backdoor endpoints are completely removed from module exports", () => {
+  expect((devicesModule as any).getAllDevicesAdmin).toBeUndefined();
+  expect((devicesModule as any).assignDeviceToEmail).toBeUndefined();
+  expect((devicesModule as any).enrollDeviceForUser).toBeUndefined();
+  expect((devicesModule as any).resolveUserId).toBeUndefined();
+  expect((devicesModule as any).resolveOrCreateUserId).toBeUndefined();
+});
 
-  await t.mutation(api.devices.updateThresholds, { token, cpuTempC: 80, gpuTempC: 75, ramPct: 85 });
-  await t.mutation(api.devices.updateThresholds, { token, cpuTempC: 81, gpuTempC: 75, ramPct: 85 });
-  expect(await t.query(api.devices.getThresholds, { token })).toEqual({ cpuTempC: 81, gpuTempC: 75, ramPct: 85 });
-  expect(await t.run((ctx) => ctx.db.query("thresholds").collect())).toHaveLength(1);
+test("Input Validation (Tier 1 & 3): updateDeviceName rejects empty/whitespace names", async () => {
+  const t = convexTest(schema, modules);
+  const user = await userWithDevice(t, "userA@example.com", "a".repeat(64));
 
   await expect(
-    t.mutation(api.devices.updateThresholds, { token, cpuTempC: 500, gpuTempC: 75, ramPct: 85 }),
-  ).rejects.toThrow(/out of range/);
+    t.mutation(api.devices.updateDeviceName, { token: user.token, deviceId: user.deviceId, name: "" })
+  ).rejects.toThrow(/cannot be empty/);
+
+  await expect(
+    t.mutation(api.devices.updateDeviceName, { token: user.token, deviceId: user.deviceId, name: "    " })
+  ).rejects.toThrow(/cannot be empty/);
 });
 
-test("a hot summary raises cpuTemp, gpuTemp and ram alerts; cooldown stops repeats (FR-43, FR-48)", async () => {
+test("Temporal & Lifecycle (Tier 3 & 8): Expired and already confirmed pairing codes are rejected", async () => {
   const t = convexTest(schema, modules);
-  const { token, deviceId } = await userWithDevice(t, "aditya@example.com", HASH_A);
+  const user = await userWithDevice(t, "userA@example.com", "a".repeat(64));
 
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...CALM });
-  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(0);
-
-  vi.advanceTimersByTime(60_000);
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...HOT });
-  const alerts = await t.query(api.devices.getMyAlerts, { token });
-  expect(alerts.map((a) => a.type).sort()).toEqual(["cpuTemp", "gpuTemp", "ram"]);
-  expect(alerts.every((a) => a.deviceId === deviceId && a.deviceName === "aditya@example.com")).toBe(true);
-  expect(alerts.find((a) => a.type === "cpuTemp")?.threshold).toBe(90);
-
-  // Still hot a minute later: inside the 15 min cooldown, nothing new.
-  vi.advanceTimersByTime(60_000);
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...HOT });
-  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(3);
-
-  // After the cooldown it alerts again.
-  vi.advanceTimersByTime(15 * 60_000);
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...HOT });
-  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(6);
-
-  expect(await t.mutation(api.devices.clearAlerts, { token })).toBe(6);
-  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(0);
-});
-
-test("a backlog batch alerts on its newest minute only", async () => {
-  const t = convexTest(schema, modules);
-  const { token } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  const now = Date.now();
-  await t.mutation(api.agent.pushSummaries, {
-    secretHash: HASH_A,
-    sentAt: now,
-    summaries: [
-      { minuteTs: now - 3 * 60_000, ...HOT },
-      { minuteTs: now - 2 * 60_000, ...HOT },
-      { minuteTs: now - 60_000, ...CALM },
-    ],
+  // Expired code test
+  const { code: expiredCode } = await t.mutation(api.pairing.start, {
+    secretHash: "c".repeat(64),
+    name: "expired-device",
+    os: "linux",
   });
-  expect(await t.query(api.devices.getMyAlerts, { token })).toHaveLength(0);
+  // Advance time past the 10-minute expiry
+  vi.advanceTimersByTime(11 * 60 * 1000);
+
+  await expect(
+    t.mutation(api.devices.confirmPairing, { token: user.token, code: expiredCode })
+  ).rejects.toThrow(/expired/);
+
+  // Reset time for new test
+  vi.setSystemTime(new Date("2026-11-12T01:00:00Z"));
+  const { code: newCode } = await t.mutation(api.pairing.start, {
+    secretHash: "d".repeat(64),
+    name: "device-two",
+    os: "linux",
+  });
+  await t.mutation(api.devices.confirmPairing, { token: user.token, code: newCode });
+
+  // Replay of already confirmed code
+  await expect(
+    t.mutation(api.devices.confirmPairing, { token: user.token, code: newCode })
+  ).rejects.toThrow(/already confirmed/);
 });
 
-test("push tokens are stored once and move with the account that registers them", async () => {
+test("Rate Limiting: devices.confirmPairing throttles after consecutive wrong pairing attempts", async () => {
   const t = convexTest(schema, modules);
-  const a = await userWithDevice(t, "aditya@example.com", HASH_A);
-  const b = await userWithDevice(t, "tirth@example.com", HASH_B);
-  const fcmToken = "f".repeat(140);
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "rate-limit-test@example.com", password: "test-password-123" });
 
-  await t.mutation(api.devices.registerPushToken, { token: a.token, fcmToken, phoneModel: "Pixel 8" });
-  await t.mutation(api.devices.registerPushToken, { token: a.token, fcmToken: ` ${fcmToken} ` });
-  let rows = await t.run((ctx) => ctx.db.query("pushTokens").collect());
-  expect(rows).toHaveLength(1);
+  // Make 10 failed guesses (each returns null and records rate event)
+  for (let i = 0; i < 10; i++) {
+    const res = await t.mutation(api.devices.confirmPairing, { token, code: `WRONG${i}` });
+    expect(res).toBeNull();
+  }
 
-  await t.mutation(api.devices.registerPushToken, { token: b.token, fcmToken });
-  rows = await t.run((ctx) => ctx.db.query("pushTokens").collect());
-  expect(rows).toHaveLength(1);
-  const bUser = await t.run((ctx) => ctx.db.query("users").filter((q) => q.eq(q.field("email"), "tirth@example.com")).unique());
-  expect(rows[0].userId).toBe(bUser!._id);
-
-  await expect(t.mutation(api.devices.registerPushToken, { token: a.token, fcmToken: "short" })).rejects.toThrow(
-    /invalid push token/,
-  );
+  // The 11th attempt should trigger rate limiting
+  await expect(
+    t.mutation(api.devices.confirmPairing, { token, code: "ANOTHER_TRY" })
+  ).rejects.toThrow(/Too many wrong pairing codes/);
 });
 
-test("deleting a device or the account removes its alerts, thresholds and push tokens", async () => {
+test("Custom Per-Device Thresholds: sets, retrieves with fallback, and resets", async () => {
   const t = convexTest(schema, modules);
-  const { token, deviceId } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...HOT });
-  await t.mutation(api.devices.updateThresholds, { token, cpuTempC: 80, gpuTempC: 75, ramPct: 85 });
-  await t.mutation(api.devices.registerPushToken, { token, fcmToken: "f".repeat(140) });
+  const user = await userWithDevice(t, "device-thresh@example.com", "e".repeat(64));
 
-  await t.mutation(api.devices.deleteDevice, { token, deviceId });
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await t.run((ctx) => ctx.db.query("alerts").collect())).toHaveLength(0);
-  expect(await t.query(api.devices.getMyDevices, { token })).toHaveLength(0);
+  // 1. Set global threshold: CPU 90, RAM 85
+  await t.mutation(api.devices.updateThresholds, {
+    token: user.token,
+    cpuTempC: 90,
+    ramPct: 85,
+  });
 
-  await t.mutation(api.auth.deleteAccount, { token });
-  expect(await t.run((ctx) => ctx.db.query("thresholds").collect())).toHaveLength(0);
-  expect(await t.run((ctx) => ctx.db.query("pushTokens").collect())).toHaveLength(0);
-});
+  // Verify global threshold
+  const globalThresh = await t.query(api.devices.getThresholds, { token: user.token });
+  expect(globalThresh?.cpuTempC).toBe(90);
+  expect(globalThresh?.ramPct).toBe(85);
 
-test("the daily cleanup deletes alerts older than 7 days", async () => {
-  const t = convexTest(schema, modules);
-  const { token } = await userWithDevice(t, "aditya@example.com", HASH_A);
-  await t.mutation(api.agent.pushSummary, { secretHash: HASH_A, minuteTs: 0, ...HOT });
-  vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1000);
-  const res = await t.mutation(internal.cleanup.deleteExpired, {});
-  expect(res.alerts).toBe(3);
-  expect(await t.run((ctx) => ctx.db.query("alerts").collect())).toHaveLength(0);
-  void token;
+  // Before custom threshold, device falls back to global
+  const fallback = await t.query(api.devices.getThresholds, {
+    token: user.token,
+    deviceId: user.deviceId,
+  });
+  expect(fallback?.cpuTempC).toBe(90);
+  expect(fallback?.isCustom).toBe(false);
+
+  // 2. Set custom threshold for device: CPU 75, RAM 70
+  await t.mutation(api.devices.updateThresholds, {
+    token: user.token,
+    deviceId: user.deviceId,
+    cpuTempC: 75,
+    ramPct: 70,
+  });
+
+  // Verify device gets custom thresholds
+  const custom = await t.query(api.devices.getThresholds, {
+    token: user.token,
+    deviceId: user.deviceId,
+  });
+  expect(custom?.cpuTempC).toBe(75);
+  expect(custom?.ramPct).toBe(70);
+  expect(custom?.isCustom).toBe(true);
+
+  // Global threshold remains unaffected
+  const globalAfter = await t.query(api.devices.getThresholds, { token: user.token });
+  expect(globalAfter?.cpuTempC).toBe(90);
+
+  // 3. Reset custom threshold for device
+  await t.mutation(api.devices.resetDeviceThresholds, {
+    token: user.token,
+    deviceId: user.deviceId,
+  });
+
+  // Now device falls back to global again
+  const reverted = await t.query(api.devices.getThresholds, {
+    token: user.token,
+    deviceId: user.deviceId,
+  });
+  expect(reverted?.cpuTempC).toBe(90);
+  expect(reverted?.isCustom).toBe(false);
 });

@@ -24,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -67,11 +68,12 @@ fun HistoryScreen(
 
     val currentDevice = state.devices.find { it.id == viewModel.selectedDeviceId }
         ?: state.devices.firstOrNull()
+    val isDark = MaterialTheme.colorScheme.background.red < 0.5f
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "History",
@@ -95,8 +97,14 @@ fun HistoryScreen(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (isSelected) PixelGreen else Color(0xFF162640))
-                            .border(1.dp, if (isSelected) PixelGreen else Color(0xFF2A3F5F), RoundedCornerShape(6.dp))
+                            .background(
+                                if (isSelected) PixelGreen else (if (isDark) Color(0xFF162640) else Color(0xFFEADFC9))
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) PixelGreen else (if (isDark) Color(0xFF2A3F5F) else CreamBorder),
+                                RoundedCornerShape(6.dp)
+                            )
                             .clickable { viewModel.onDaysSelected(days) }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -106,7 +114,7 @@ fun HistoryScreen(
                             fontFamily = PixelFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            color = if (isSelected) DeepNavy else TextGray
+                            color = if (isSelected) Color(0xFF0F172A) else (if (isDark) TextGray else Color(0xFF5D4037))
                         )
                     }
                 }

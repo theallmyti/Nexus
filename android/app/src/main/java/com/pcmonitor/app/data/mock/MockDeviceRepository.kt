@@ -219,8 +219,20 @@ class MockDeviceRepository(
                         (lastSeen > 0L && (now - lastSeen) < 180000L)
 
                     val existing = _devices.value.find { it.id == id }
-                    val stats = if (latestObj != null && (latestObj.has("cpu") || latestObj.has("ram"))) {
+                    val parsedStats = if (latestObj != null && (latestObj.has("cpu") || latestObj.has("ram"))) {
                         parseConvexSnapshot(latestObj)
+                    } else null
+
+                    val stats = if (parsedStats != null) {
+                        if (existing != null) {
+                            parsedStats.copy(
+                                gpu = parsedStats.gpu ?: existing.hardwareStats.gpu,
+                                battery = parsedStats.battery ?: existing.hardwareStats.battery,
+                                usage = if (parsedStats.usage.uptimeSeconds > 0) parsedStats.usage else existing.hardwareStats.usage
+                            )
+                        } else {
+                            parsedStats
+                        }
                     } else if (existing != null && existing.hardwareStats.cpu.totalUtilization > 0f) {
                         existing.hardwareStats
                     } else {
@@ -474,7 +486,17 @@ class MockDeviceRepository(
                             else -> false
                         }
                         val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
-                        val stats = liveStats ?: if (online) device.hardwareStats else createEmptyHardwareStats()
+                        val stats = if (liveStats != null) {
+                            liveStats.copy(
+                                gpu = liveStats.gpu ?: device.hardwareStats.gpu,
+                                battery = liveStats.battery ?: device.hardwareStats.battery,
+                                usage = if (liveStats.usage.uptimeSeconds > 0) liveStats.usage else device.hardwareStats.usage
+                            )
+                        } else if (online) {
+                            device.hardwareStats
+                        } else {
+                            createEmptyHardwareStats()
+                        }
                         device.copy(
                             hardwareStats = stats,
                             isOnline = online,
@@ -488,9 +510,9 @@ class MockDeviceRepository(
                 // Evaluate hardware thresholds in real-time and fire heads-up notifications
                 if (liveStats != null && context != null && userPreferencesRepository != null) {
                     try {
-                        val cpuLimit = userPreferencesRepository.cpuThreshold.first()
-                        val gpuLimit = userPreferencesRepository.gpuThreshold.first()
-                        val ramLimit = userPreferencesRepository.ramThreshold.first()
+                        val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(activeDeviceId).first()
+                        val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(activeDeviceId).first()
+                        val ramLimit = userPreferencesRepository.getDeviceRamThreshold(activeDeviceId).first()
 
                         val currentDevice = _devices.value.find { it.id == activeDeviceId }
                         val devName = currentDevice?.name ?: "Primary PC"

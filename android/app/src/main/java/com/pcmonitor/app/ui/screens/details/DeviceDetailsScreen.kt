@@ -31,10 +31,12 @@ import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,7 +81,8 @@ import com.pcmonitor.app.ui.theme.TextWhite
 fun DeviceDetailsScreen(
     viewModel: DeviceDetailsViewModel,
     onBack: () -> Unit,
-    onNavigateToHistory: (String) -> Unit
+    onNavigateToHistory: (String) -> Unit,
+    onNavigateToThresholds: (String) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val device = state.device
@@ -88,7 +91,7 @@ fun DeviceDetailsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         if (state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -109,7 +112,7 @@ fun DeviceDetailsScreen(
                     text = "Device not found",
                     fontFamily = ReadableFontFamily,
                     fontSize = 18.sp,
-                    color = TextWhite
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -129,7 +132,7 @@ fun DeviceDetailsScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
-            // Top Bar: Back button, Title, and History shortcut
+            // Top Bar: Back button, Title, and Action shortcuts
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -154,6 +157,13 @@ fun DeviceDetailsScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onNavigateToThresholds(device.id) }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Alert Thresholds",
+                            tint = ArcadeYellow
+                        )
+                    }
                     IconButton(onClick = { onNavigateToHistory(device.id) }) {
                         Icon(
                             imageVector = Icons.Default.History,

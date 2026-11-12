@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -73,7 +74,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         if (state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -157,7 +158,7 @@ fun HomeScreen(
                         fontFamily = ReadableFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = TextWhite
+                        color = MaterialTheme.colorScheme.onBackground
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -166,7 +167,7 @@ fun HomeScreen(
                         text = "Here's what's happening with your devices.",
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
-                        color = TextGray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -192,7 +193,7 @@ fun HomeScreen(
                             fontFamily = ReadableFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp,
-                            color = TextWhite
+                            color = MaterialTheme.colorScheme.onBackground
                         )
 
                         Text(
@@ -278,7 +279,7 @@ fun HomeScreen(
                                 fontFamily = ReadableFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp,
-                                color = TextWhite
+                                color = MaterialTheme.colorScheme.onBackground
                             )
 
                             Text(

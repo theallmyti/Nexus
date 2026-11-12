@@ -1,6 +1,5 @@
-// Subset of docs/Database.md: devices + latest. The full schema lands in week 2.
+// Production schema for Nexus Fleet Monitoring System (Convex)
 // Changes must be backward-compatible (add optional fields only) — docs/Development.md §3.
-// isFake: true marks test rows; they are deleted before week 3.
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { battery, capabilities, collectorStatus, driveLive, driveSummary, ramDetail, topProc, usage } from "./validators";
@@ -60,7 +59,8 @@ export default defineSchema({
     agentVersion: v.optional(v.string()),
   })
     .index("by_secretHash", ["secretHash"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_user_hostname", ["userId", "hostname"]),
 
   // Open pairing codes (docs/Flow.md §3). Confirmed rows keep the device link for the agent.
   pairingRequests: defineTable({
@@ -116,39 +116,6 @@ export default defineSchema({
     ),
   }).index("by_device", ["deviceId"]),
 
-  // Alert limits per account (FR-40). No row = the defaults in alerts.ts.
-  thresholds: defineTable({
-    userId: v.id("users"),
-    cpuTempC: v.number(),
-    gpuTempC: v.number(),
-    ramPct: v.number(),
-    updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
-
-  // Raised when a summary crosses a threshold (FR-43). Kept 7 days, like summaries.
-  alerts: defineTable({
-    userId: v.id("users"),
-    deviceId: v.id("devices"),
-    deviceName: v.string(),
-    type: v.string(), // "cpuTemp" | "gpuTemp" | "ram" | "offline"
-    value: v.number(),
-    threshold: v.number(),
-    createdAt: v.number(),
-  })
-    .index("by_user_created", ["userId", "createdAt"])
-    .index("by_device_type_created", ["deviceId", "type", "createdAt"])
-    .index("by_created", ["createdAt"]),
-
-  // Phones that receive FCM pushes for an account (one row per FCM token).
-  pushTokens: defineTable({
-    userId: v.id("users"),
-    fcmToken: v.string(),
-    phoneModel: v.optional(v.string()),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_fcmToken", ["fcmToken"]),
-
   // One row per device per minute: averages and peaks of the agent's 1 s samples
   // (docs/Database.md summaries). Collector status is added in Task 14.
   summaries: defineTable({
@@ -170,4 +137,52 @@ export default defineSchema({
     .index("by_device_time", ["deviceId", "minuteTs"])
     // For the daily retention job across all devices (FR-50).
     .index("by_minute", ["minuteTs"]),
+
+  thresholds: defineTable({
+    userId: v.id("users"),
+    deviceId: v.optional(v.id("devices")),
+    cpuTempC: v.optional(v.number()),
+    gpuTempC: v.optional(v.number()),
+    ramPct: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_device", ["deviceId"])
+    .index("by_user_device", ["userId", "deviceId"]),
+
+  diskThresholds: defineTable({
+    deviceId: v.id("devices"),
+    drive: v.string(),
+    minFreePct: v.optional(v.number()),
+    minFreeGB: v.optional(v.number()),
+  }).index("by_device", ["deviceId"]),
+
+  alerts: defineTable({
+    userId: v.id("users"),
+    deviceId: v.id("devices"),
+    type: v.union(
+      v.literal("cpuTemp"),
+      v.literal("gpuTemp"),
+      v.literal("ram"),
+      v.literal("disk"),
+      v.literal("offline"),
+      v.literal("canary")
+    ),
+    value: v.optional(v.number()),
+    threshold: v.optional(v.number()),
+    createdAt: v.number(),
+    pushed: v.boolean(),
+  })
+    .index("by_user_time", ["userId", "createdAt"])
+    .index("by_device_type_time", ["deviceId", "type", "createdAt"])
+    // For the daily 7-day alert cleanup (cleanup.ts).
+    .index("by_created", ["createdAt"]),
+
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    fcmToken: v.string(),
+    phoneModel: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_token", ["fcmToken"]),
 });

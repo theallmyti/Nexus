@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -54,11 +55,12 @@ fun OnboardingScreen(
 ) {
     val page = viewModel.pages[viewModel.currentPage]
     val isLastPage = viewModel.currentPage == viewModel.pages.size - 1
+    val isDark = MaterialTheme.colorScheme.background.red < 0.5f
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
@@ -115,7 +117,7 @@ fun OnboardingScreen(
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                color = TextWhite,
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
@@ -127,7 +129,7 @@ fun OnboardingScreen(
                 text = page.description,
                 fontFamily = ReadableFontFamily,
                 fontSize = 14.sp,
-                color = TextGray,
+                color = if (isDark) TextGray else Color(0xFF6B5B45),
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )

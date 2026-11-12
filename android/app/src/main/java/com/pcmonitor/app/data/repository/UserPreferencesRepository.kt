@@ -87,6 +87,12 @@ class UserPreferencesRepository(private val context: Context) {
         val RAM_THRESHOLD = floatPreferencesKey("ram_threshold")
         val DISK_THRESHOLD = floatPreferencesKey("disk_threshold")
         val FCM_TOKEN = stringPreferencesKey("fcm_token")
+
+        fun deviceCpuKey(deviceId: String) = floatPreferencesKey("cpu_thresh_$deviceId")
+        fun deviceGpuKey(deviceId: String) = floatPreferencesKey("gpu_thresh_$deviceId")
+        fun deviceRamKey(deviceId: String) = floatPreferencesKey("ram_thresh_$deviceId")
+        fun deviceDiskKey(deviceId: String) = floatPreferencesKey("disk_thresh_$deviceId")
+        fun deviceHasCustomKey(deviceId: String) = booleanPreferencesKey("has_custom_thresh_$deviceId")
     }
 
     val fcmToken: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -191,19 +197,93 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun syncThresholdsToConvex(userEmail: String, cpu: Float, gpu: Float, ram: Float) {
+    fun getDeviceCpuThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[deviceCpuKey(deviceId)] ?: prefs[CPU_THRESHOLD] ?: 90f
+    }
+
+    fun getDeviceGpuThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[deviceGpuKey(deviceId)] ?: prefs[GPU_THRESHOLD] ?: 85f
+    }
+
+    fun getDeviceRamThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[deviceRamKey(deviceId)] ?: prefs[RAM_THRESHOLD] ?: 90f
+    }
+
+    fun getDeviceDiskThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[deviceDiskKey(deviceId)] ?: prefs[DISK_THRESHOLD] ?: 10f
+    }
+
+    fun hasCustomThresholds(deviceId: String): Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[deviceHasCustomKey(deviceId)] ?: false
+    }
+
+    suspend fun saveDeviceThresholds(deviceId: String, cpu: Float, gpu: Float, ram: Float, disk: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[deviceCpuKey(deviceId)] = cpu
+            prefs[deviceGpuKey(deviceId)] = gpu
+            prefs[deviceRamKey(deviceId)] = ram
+            prefs[deviceDiskKey(deviceId)] = disk
+            prefs[deviceHasCustomKey(deviceId)] = true
+        }
+        val email = userEmail.first()
+        if (email.isNotBlank()) {
+            syncThresholdsToConvex(email, cpu, gpu, ram, deviceId = deviceId)
+        }
+    }
+
+    suspend fun resetDeviceThresholds(deviceId: String) {
+        context.dataStore.edit { prefs ->
+            prefs.remove(deviceCpuKey(deviceId))
+            prefs.remove(deviceGpuKey(deviceId))
+            prefs.remove(deviceRamKey(deviceId))
+            prefs.remove(deviceDiskKey(deviceId))
+            prefs.remove(deviceHasCustomKey(deviceId))
+        }
+        resetDeviceThresholdsInConvex(deviceId)
+    }
+
+    suspend fun syncThresholdsToConvex(userEmail: String, cpu: Float, gpu: Float, ram: Float, deviceId: String? = null) {
         val token = getSessionToken()
         if (token.isNullOrBlank()) return
         withContext(Dispatchers.IO) {
             try {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
+                val args = JSONObject().apply {
+                    put("token", token)
+                    put("cpuTempC", cpu.toDouble())
+                    put("gpuTempC", gpu.toDouble())
+                    put("ramPct", ram.toDouble())
+                    if (!deviceId.isNullOrBlank()) {
+                        put("deviceId", deviceId)
+                    }
+                }
                 val json = JSONObject().apply {
                     put("path", "devices:updateThresholds")
+                    put("args", args)
+                }
+                val req = Request.Builder()
+                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                    .post(json.toString().toRequestBody(mediaType))
+                    .build()
+                httpClient.newCall(req).execute().close()
+                android.util.Log.i("UserPreferencesRepo", "Synced thresholds to Convex (device: $deviceId, CPU: $cpu, GPU: $gpu, RAM: $ram)")
+            } catch (e: Exception) {
+                android.util.Log.e("UserPreferencesRepo", "Failed to sync thresholds to Convex: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun resetDeviceThresholdsInConvex(deviceId: String) {
+        val token = getSessionToken()
+        if (token.isNullOrBlank() || deviceId.isBlank()) return
+        withContext(Dispatchers.IO) {
+            try {
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val json = JSONObject().apply {
+                    put("path", "devices:resetDeviceThresholds")
                     put("args", JSONObject().apply {
                         put("token", token)
-                        put("cpuTempC", cpu.toDouble())
-                        put("gpuTempC", gpu.toDouble())
-                        put("ramPct", ram.toDouble())
+                        put("deviceId", deviceId)
                     })
                 }
                 val req = Request.Builder()
@@ -211,9 +291,9 @@ class UserPreferencesRepository(private val context: Context) {
                     .post(json.toString().toRequestBody(mediaType))
                     .build()
                 httpClient.newCall(req).execute().close()
-                android.util.Log.i("UserPreferencesRepo", "Synced thresholds to Convex for user (CPU: $cpu, GPU: $gpu, RAM: $ram)")
+                android.util.Log.i("UserPreferencesRepo", "Reset thresholds in Convex for device: $deviceId")
             } catch (e: Exception) {
-                android.util.Log.e("UserPreferencesRepo", "Failed to sync thresholds to Convex: ${e.message}")
+                android.util.Log.e("UserPreferencesRepo", "Failed to reset thresholds in Convex: ${e.message}")
             }
         }
     }

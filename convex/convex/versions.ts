@@ -1,3 +1,6 @@
+import { query } from "./_generated/server";
+import { v } from "convex/values";
+
 // Agent versions the backend supports (docs/Development.md §3).
 //
 // Agents on people's computers cannot all be updated at once, so agent-facing functions
@@ -33,3 +36,27 @@ export function isOutdated(version: string | undefined) {
 export function isUnsupported(version: string | undefined) {
   return version !== undefined && compareVersions(version, MIN_AGENT_VERSION) < 0;
 }
+
+// Queries for clients / agents to check version status
+export const latestAgentVersion = query({
+  args: {},
+  handler: async () => {
+    return {
+      latest: LATEST_AGENT_VERSION,
+      minimum: MIN_AGENT_VERSION,
+    };
+  },
+});
+
+export const checkVersion = query({
+  args: { version: v.string() },
+  handler: async (_ctx, args) => {
+    return {
+      current: args.version,
+      latest: LATEST_AGENT_VERSION,
+      minimum: MIN_AGENT_VERSION,
+      isOutdated: isOutdated(args.version),
+      isUnsupported: isUnsupported(args.version),
+    };
+  },
+});

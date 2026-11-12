@@ -1,7 +1,9 @@
 // Threshold alerts (FR-40–43, FR-48; tasks/todo.md Tasks 9–10).
 // Evaluated on every summary the agent sends (once a minute, always, not only while someone is
 // watching), so an alert fires within about a minute of the threshold being crossed.
-// Push delivery (FCM) is not wired yet: alerts are stored and the app lists them.
+// Thresholds come from the app's settings (devices:updateThresholds): a device's own row, then the
+// account-wide row (no deviceId), then the defaults below, field by field.
+// Rows are written with `pushed: false`; FCM delivery is not wired yet.
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -27,12 +29,24 @@ export type SummaryReadings = {
   gpuUtilAvg?: number;
 };
 
-export async function thresholdsFor(ctx: Pick<QueryCtx, "db">, userId: Id<"users">): Promise<Thresholds> {
-  const row = await ctx.db
+export async function thresholdsFor(
+  ctx: Pick<QueryCtx, "db">,
+  userId: Id<"users">,
+  deviceId: Id<"devices">,
+): Promise<Thresholds> {
+  const own = await ctx.db
     .query("thresholds")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
-  return row ? { cpuTempC: row.cpuTempC, gpuTempC: row.gpuTempC, ramPct: row.ramPct } : DEFAULT_THRESHOLDS;
+    .withIndex("by_user_device", (q) => q.eq("userId", userId).eq("deviceId", deviceId))
+    .first();
+  const account = await ctx.db
+    .query("thresholds")
+    .withIndex("by_user_device", (q) => q.eq("userId", userId).eq("deviceId", undefined))
+    .first();
+  return {
+    cpuTempC: own?.cpuTempC ?? account?.cpuTempC ?? DEFAULT_THRESHOLDS.cpuTempC,
+    gpuTempC: own?.gpuTempC ?? account?.gpuTempC ?? DEFAULT_THRESHOLDS.gpuTempC,
+    ramPct: own?.ramPct ?? account?.ramPct ?? DEFAULT_THRESHOLDS.ramPct,
+  };
 }
 
 // Which thresholds this minute crossed. A summary holds both the minute's average and its peak
@@ -49,10 +63,10 @@ export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, 
   const userId = device.userId;
   const now = Date.now();
   let raised = 0;
-  for (const b of breaches(s, await thresholdsFor(ctx, userId))) {
+  for (const b of breaches(s, await thresholdsFor(ctx, userId, device._id))) {
     const recent = await ctx.db
       .query("alerts")
-      .withIndex("by_device_type_created", (q) =>
+      .withIndex("by_device_type_time", (q) =>
         q.eq("deviceId", device._id).eq("type", b.type).gt("createdAt", now - ALERT_COOLDOWN_MS),
       )
       .first();
@@ -60,11 +74,11 @@ export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, 
     await ctx.db.insert("alerts", {
       userId,
       deviceId: device._id,
-      deviceName: device.name,
       type: b.type,
       value: b.value,
       threshold: b.threshold,
       createdAt: now,
+      pushed: false,
     });
     raised++;
   }
