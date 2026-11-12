@@ -1,6 +1,9 @@
 package com.pcmonitor.app.ui.screens.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,7 +39,8 @@ import com.pcmonitor.app.ui.theme.TextWhite
 @Composable
 fun ForgotPasswordScreen(
     viewModel: AuthViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToHome: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -49,6 +55,7 @@ fun ForgotPasswordScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -65,7 +72,10 @@ fun ForgotPasswordScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Enter your registered email address. In this mock mode, the system will verify whether your account exists and generate a reset code.",
+                text = if (viewModel.forgotCodeSent)
+                    "Enter the 6-digit code we emailed you and choose a new password. This signs you out everywhere else."
+                else
+                    "Enter your account's email address and we'll send you a 6-digit reset code.",
                 fontFamily = ReadableFontFamily,
                 fontSize = 14.sp,
                 color = TextGray,
@@ -86,6 +96,32 @@ fun ForgotPasswordScreen(
                 keyboardType = KeyboardType.Email,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            if (viewModel.forgotCodeSent) {
+                Spacer(modifier = Modifier.height(14.dp))
+                RetroTextField(
+                    value = viewModel.forgotCode,
+                    onValueChange = { v -> viewModel.forgotCode = v.filter { it.isDigit() }.take(6) },
+                    label = "6-digit code",
+                    leadingIcon = Icons.Default.Pin,
+                    isError = viewModel.forgotCodeError != null,
+                    errorMessage = viewModel.forgotCodeError,
+                    keyboardType = KeyboardType.NumberPassword,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                RetroTextField(
+                    value = viewModel.forgotNewPassword,
+                    onValueChange = { viewModel.forgotNewPassword = it },
+                    label = "New password (8+ characters)",
+                    leadingIcon = Icons.Default.Lock,
+                    isPassword = true,
+                    isError = viewModel.forgotNewPasswordError != null,
+                    errorMessage = viewModel.forgotNewPasswordError,
+                    keyboardType = KeyboardType.Password,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             if (viewModel.generalError != null) {
                 Spacer(modifier = Modifier.height(14.dp))
@@ -112,13 +148,31 @@ fun ForgotPasswordScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            RetroButton(
-                text = "Send Reset Code",
-                onClick = { viewModel.requestPasswordReset() },
-                isLoading = viewModel.isLoading,
-                variant = RetroButtonVariant.Primary,
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (viewModel.forgotCodeSent) {
+                RetroButton(
+                    text = "Set New Password",
+                    onClick = { viewModel.resetPassword(onSuccess = onNavigateToHome) },
+                    isLoading = viewModel.isLoading,
+                    variant = RetroButtonVariant.Primary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Resend code",
+                    fontFamily = ReadableFontFamily,
+                    fontSize = 13.sp,
+                    color = TextGray,
+                    modifier = Modifier.clickable(enabled = !viewModel.isLoading) { viewModel.requestPasswordReset() }
+                )
+            } else {
+                RetroButton(
+                    text = "Send Reset Code",
+                    onClick = { viewModel.requestPasswordReset() },
+                    isLoading = viewModel.isLoading,
+                    variant = RetroButtonVariant.Primary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }

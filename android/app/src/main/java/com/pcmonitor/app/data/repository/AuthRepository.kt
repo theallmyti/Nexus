@@ -12,6 +12,8 @@ interface AuthRepository {
     suspend fun register(request: RegisterRequest): Result<User>
     suspend fun logout()
     suspend fun requestPasswordReset(email: String): Result<String>
+    /** Sets a new password with the emailed 6-digit code and signs in. */
+    suspend fun resetPassword(email: String, code: String, newPassword: String): Result<User>
     suspend fun isLoggedIn(): Boolean
 }
 

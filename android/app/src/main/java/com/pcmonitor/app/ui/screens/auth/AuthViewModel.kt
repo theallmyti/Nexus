@@ -40,6 +40,12 @@ class AuthViewModel(
     var forgotEmail by mutableStateOf("")
     var forgotEmailError by mutableStateOf<String?>(null)
     var forgotMessage by mutableStateOf<String?>(null)
+    // Step 2 of Forgot Password: the emailed code and the new password.
+    var forgotCodeSent by mutableStateOf(false)
+    var forgotCode by mutableStateOf("")
+    var forgotNewPassword by mutableStateOf("")
+    var forgotCodeError by mutableStateOf<String?>(null)
+    var forgotNewPasswordError by mutableStateOf<String?>(null)
 
     // Common State
     var isLoading by mutableStateOf(false)
@@ -117,6 +123,7 @@ class AuthViewModel(
             result.fold(
                 onSuccess = { msg ->
                     forgotMessage = msg
+                    forgotCodeSent = true
                 },
                 onFailure = { error ->
                     generalError = error.message ?: "Could not process password reset."
@@ -173,6 +180,26 @@ class AuthViewModel(
             registerConfirmPasswordError = null
         }
         return valid
+    }
+
+    fun resetPassword(onSuccess: () -> Unit) {
+        forgotCodeError = if (!Regex("""^\d{6}$""").matches(forgotCode.trim())) "Enter the 6-digit code from the email." else null
+        forgotNewPasswordError = if (forgotNewPassword.length < 8) "Use at least 8 characters." else null
+        if (forgotCodeError != null || forgotNewPasswordError != null) return
+
+        isLoading = true
+        generalError = null
+        viewModelScope.launch {
+            val result = authRepository.resetPassword(forgotEmail.trim(), forgotCode.trim(), forgotNewPassword)
+            isLoading = false
+            result.fold(
+                onSuccess = { user ->
+                    preferencesRepository.saveUserInfo(user.id, user.name, user.email)
+                    onSuccess()
+                },
+                onFailure = { error -> generalError = error.message ?: "Could not reset the password." }
+            )
+        }
     }
 
     private fun validateForgot(): Boolean {

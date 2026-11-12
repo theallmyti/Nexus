@@ -154,7 +154,12 @@ fun PCMonitorNavGraph(
             }
             ForgotPasswordScreen(
                 viewModel = authViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToHome = {
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
             )
         }
 

@@ -8,6 +8,7 @@ import { dummyHash, hashPassword, newToken, tokenHash, verifyPassword } from "./
 import { sessionUser } from "./model";
 import { MAX_ATTEMPTS } from "./users";
 import { verifyTurnstile } from "./turnstile";
+import { EMAIL_NOT_CONFIGURED, emailConfigured, sendEmail } from "./email";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8; // FR-01
@@ -66,6 +67,71 @@ export const signIn = action({
       userId: user._id,
       tokenHash: tokenHash(token),
     });
+    return { token };
+  },
+});
+
+// --- Forgot password: a 6-digit code by email (Cloudflare Email Service, email.ts) ---
+
+function newResetCode(): string {
+  // 0–999999 without modulo bias: reject the top of the 32-bit range.
+  const buf = new Uint32Array(1);
+  do crypto.getRandomValues(buf);
+  while (buf[0] >= 4_294_000_000);
+  return String(buf[0] % 1_000_000).padStart(6, "0");
+}
+
+// Same answer whether or not the email has an account, so the form cannot be used to find
+// accounts. Errors only for a bad address, too many requests, or a sending failure.
+export const requestPasswordReset = action({
+  args: { email: v.string() },
+  handler: async (ctx, args): Promise<{ sent: true }> => {
+    const email = normalizeEmail(args.email);
+    if (email.length > MAX_EMAIL || !EMAIL.test(email)) {
+      throw new ConvexError("Enter a valid email address.");
+    }
+    if (!emailConfigured()) throw new ConvexError(EMAIL_NOT_CONFIGURED);
+    const code = newResetCode();
+    const started = await ctx.runMutation(internal.users.startPasswordReset, { email, codeHash: tokenHash(code) });
+    if (started === false) {
+      throw new ConvexError("Too many reset emails. Try again in an hour.");
+    }
+    if (started === true) {
+      await sendEmail(
+        email,
+        `Your Nexus reset code: ${code}`,
+        `Your Nexus password reset code is ${code}.
+
+It expires in 15 minutes. If you didn't ask for this, ignore this email; your password stays the same.`,
+        `<p>Your Nexus password reset code is</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
+          `<p>It expires in 15 minutes. If you didn't ask for this, ignore this email; your password stays the same.</p>`,
+      );
+    }
+    return { sent: true };
+  },
+});
+
+// Sets a new password with the emailed code. Signs out every other session and returns a new one.
+export const resetPassword = action({
+  args: { email: v.string(), code: v.string(), newPassword: v.string() },
+  handler: async (ctx, args): Promise<{ token: string }> => {
+    const email = normalizeEmail(args.email);
+    const code = args.code.replace(/\s/g, "");
+    if (!/^\d{6}$/.test(code)) throw new ConvexError("Enter the 6-digit code from the email.");
+    if (args.newPassword.length < MIN_PASSWORD) {
+      throw new ConvexError(`Use at least ${MIN_PASSWORD} characters for the password.`);
+    }
+    if (args.newPassword.length > MAX_PASSWORD) {
+      throw new ConvexError(`Use at most ${MAX_PASSWORD} characters for the password.`);
+    }
+    const token = newToken();
+    const res = await ctx.runMutation(internal.users.finishPasswordReset, {
+      email,
+      codeHash: tokenHash(code),
+      passwordHash: hashPassword(args.newPassword),
+      newTokenHash: tokenHash(token),
+    });
+    if (!res.ok) throw new ConvexError(res.error);
     return { token };
   },
 });
@@ -157,8 +223,12 @@ export const deleteAccount = mutation({
       await ctx.db.delete(d._id);
     }
 
-    // 3. Delete alerts, thresholds and push tokens
+    // 3. Delete alerts, thresholds, push tokens and open reset codes
     const accountRows = [
+      ...(await ctx.db
+        .query("passwordResets")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect()),
       ...(await ctx.db
         .query("alerts")
         .withIndex("by_user_time", (q) => q.eq("userId", userId))

@@ -32,17 +32,21 @@ export const deleteExpired = internalMutation({
       .query("sessions")
       .withIndex("by_lastUsedAt", (q) => q.lt("lastUsedAt", now - SESSION_IDLE_MS))
       .take(BATCH);
+    const resets = await ctx.db
+      .query("passwordResets")
+      .withIndex("by_expires", (q) => q.lt("expiresAt", now - HOUR_MS))
+      .take(BATCH);
     const alerts = await ctx.db
       .query("alerts")
       .withIndex("by_created", (q) => q.lt("createdAt", now - ALERT_RETENTION_MS))
       .take(BATCH);
-    for (const row of [...events, ...attempts, ...codes, ...sessions, ...alerts]) {
+    for (const row of [...events, ...attempts, ...codes, ...sessions, ...alerts, ...resets]) {
       await ctx.db.delete(row._id);
     }
     // A full batch means more may remain: run again straight away.
-    if ([events, attempts, codes, sessions, alerts].some((rows) => rows.length === BATCH)) {
+    if ([events, attempts, codes, sessions, alerts, resets].some((rows) => rows.length === BATCH)) {
       await ctx.scheduler.runAfter(0, internal.cleanup.deleteExpired, {});
     }
-    return { events: events.length, attempts: attempts.length, codes: codes.length, sessions: sessions.length, alerts: alerts.length };
+    return { events: events.length, attempts: attempts.length, codes: codes.length, sessions: sessions.length, alerts: alerts.length, resets: resets.length };
   },
 });

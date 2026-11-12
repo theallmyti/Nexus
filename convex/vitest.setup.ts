@@ -12,11 +12,27 @@ const ANSWERS: Record<string, object> = {
   "localhost-token": { success: true, action: "signup", hostname: "localhost" },
 };
 
+// Emails "sent" through Cloudflare Email Service in the current test (email.ts).
+export const sentEmails: { to: string; subject: string; text: string }[] = [];
+
 beforeEach(() => {
+  sentEmails.length = 0;
+  process.env.CF_EMAIL_ACCOUNT_ID = "test-account";
+  process.env.CF_EMAIL_API_TOKEN = "test-email-token";
+  process.env.EMAIL_FROM = "noreply@example.com";
   process.env.TURNSTILE_SECRET = "test-secret";
   process.env.TURNSTILE_HOSTNAMES = "tidy-newt-65.convex.site, pc-monitor.pages.dev";
   const realFetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "https://api.cloudflare.com/client/v4/accounts/test-account/email/sending/send") {
+      const auth = new Headers(init?.headers).get("Authorization");
+      if (auth !== "Bearer test-email-token") {
+        return Response.json({ success: false, errors: [{ code: 10000, message: "auth" }], result: null }, { status: 403 });
+      }
+      const mail = JSON.parse(String(init?.body));
+      sentEmails.push({ to: mail.to, subject: mail.subject, text: mail.text });
+      return Response.json({ success: true, errors: [], messages: [], result: { delivered: [mail.to], permanent_bounces: [], queued: [] } });
+    }
     if (String(input) !== SITEVERIFY) return realFetch(input, init);
     const form = new URLSearchParams(String(init?.body ?? ""));
     const token = form.get("response") ?? "";

@@ -22,6 +22,17 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_lastUsedAt", ["lastUsedAt"]),
 
+  // Password reset codes (auth.requestPasswordReset / resetPassword). One open code per user;
+  // only the SHA-256 of the 6-digit code is stored.
+  passwordResets: defineTable({
+    userId: v.id("users"),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_expires", ["expiresAt"]),
+
   // Failed sign-ins, for the 5 per 15 min limit (FR-04).
   loginAttempts: defineTable({
     email: v.string(),

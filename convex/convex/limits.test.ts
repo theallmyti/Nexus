@@ -105,7 +105,7 @@ test("the daily cleanup deletes old limit rows and expired codes, and keeps curr
     await ctx.db.insert("sessions", { userId, tokenHash: "cur_sess", lastUsedAt: now });
   });
 
-  expect(await t.mutation(internal.cleanup.deleteExpired, {})).toEqual({ events: 2, attempts: 1, codes: 1, sessions: 1, alerts: 0 });
+  expect(await t.mutation(internal.cleanup.deleteExpired, {})).toEqual({ events: 2, attempts: 1, codes: 1, sessions: 1, alerts: 0, resets: 0 });
   const codes = await t.run((ctx) => ctx.db.query("pairingRequests").collect());
   expect(codes.map((c) => c.code)).toEqual(["BBBBBB"]);
   expect(await t.run((ctx) => ctx.db.query("rateEvents").collect())).toHaveLength(1);

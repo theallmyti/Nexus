@@ -74,7 +74,13 @@ class MockAuthRepository(
     }
 
     // Calls a Convex auth action. Success: the session token. Failure: a message to show.
-    private suspend fun callAuthAction(path: String, args: Map<String, String>): Result<String> {
+    private suspend fun callAuthAction(path: String, args: Map<String, String>): Result<String> =
+        callAction(path, args).mapCatching { value ->
+            value?.optString("token").orEmpty().ifBlank { throw Exception("Something went wrong. Please try again.") }
+        }
+
+    // Calls a Convex action. Success: its value. Failure: a message to show.
+    private suspend fun callAction(path: String, args: Map<String, String>): Result<JSONObject?> {
         if (baseUrl.isBlank()) return Result.failure(Exception(OFFLINE))
         return withContext(Dispatchers.IO) {
             try {
@@ -85,11 +91,8 @@ class MockAuthRepository(
                 val req = Request.Builder().url("$baseUrl/api/action").post(body).build()
                 val text = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
                 val env = JSONObject(text)
-                val token = env.optJSONObject("value")?.optString("token").orEmpty()
-                when {
-                    env.optString("status") == "success" && token.isNotBlank() -> Result.success(token)
-                    else -> Result.failure(Exception(serverMessage(env)))
-                }
+                if (env.optString("status") == "success") Result.success(env.optJSONObject("value"))
+                else Result.failure(Exception(serverMessage(env)))
             } catch (e: Exception) {
                 Result.failure(Exception(OFFLINE))
             }
@@ -150,12 +153,31 @@ class MockAuthRepository(
         )
     }
 
-    // The backend has no password reset yet. This used to claim "Reset code sent" without sending
-    // anything; it now says so plainly.
+    // Emails a 6-digit code (auth:requestPasswordReset). The server answers the same whether or
+    // not the address has an account.
     override suspend fun requestPasswordReset(email: String): Result<String> {
-        val message = "Password reset isn't available yet. If you can't sign in, ask the Nexus team to reset your account."
-        _authState.value = _authState.value.copy(isLoading = false, error = message)
-        return Result.failure(Exception(message))
+        val clean = email.lowercase().trim()
+        return callAction("auth:requestPasswordReset", mapOf("email" to clean)).map {
+            "If $clean has a Nexus account, a 6-digit code is on its way. It expires in 15 minutes."
+        }
+    }
+
+    override suspend fun resetPassword(email: String, code: String, newPassword: String): Result<User> {
+        _authState.value = _authState.value.copy(isLoading = true, error = null)
+        val clean = email.lowercase().trim()
+        val result = callAuthAction(
+            "auth:resetPassword",
+            mapOf("email" to clean, "code" to code.trim(), "newPassword" to newPassword)
+        )
+        return finishAuth(result) { token ->
+            userPreferencesRepository?.saveSessionToken(token)
+            User(
+                id = userIdFor(clean),
+                name = clean.substringBefore("@").replaceFirstChar { it.uppercase() },
+                email = clean,
+                createdAt = System.currentTimeMillis()
+            )
+        }
     }
 
     override suspend fun isLoggedIn(): Boolean {
