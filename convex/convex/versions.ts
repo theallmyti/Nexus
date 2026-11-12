@@ -60,3 +60,23 @@ export const checkVersion = query({
     };
   },
 });
+
+// Android App versioning and OTA auto-update contract
+export const LATEST_APP_VERSION_CODE = 2;
+export const LATEST_APP_VERSION_NAME = "1.0.1";
+export const DEFAULT_APP_DOWNLOAD_URL = "https://github.com/theallmyti/Nexus/releases/latest/download/app-debug.apk";
+export const DEFAULT_APP_RELEASE_NOTES = "Uniform metric containers, custom display name, accurate battery AC charging & high-contrast light mode.";
+
+export const checkAppUpdate = query({
+  args: { currentVersionCode: v.number() },
+  handler: async (_ctx, args) => {
+    return {
+      updateAvailable: args.currentVersionCode < LATEST_APP_VERSION_CODE,
+      latestVersionCode: LATEST_APP_VERSION_CODE,
+      latestVersionName: LATEST_APP_VERSION_NAME,
+      downloadUrl: DEFAULT_APP_DOWNLOAD_URL,
+      releaseNotes: DEFAULT_APP_RELEASE_NOTES,
+      isMandatory: false,
+    };
+  },
+});

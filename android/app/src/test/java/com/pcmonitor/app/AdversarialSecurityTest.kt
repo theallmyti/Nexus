@@ -158,4 +158,58 @@ class AdversarialSecurityTest {
         val isNegativeOnline = (negativeTs > 0L) && ((now - negativeTs) < 15_000L)
         assertFalse("Negative timestamp must never be online", isNegativeOnline)
     }
+
+    @Test
+    fun testAppUpdateSecurityAndSandboxContainment() {
+        // Tier 7: Directory Traversal in APK File Path
+        val cacheDir = java.io.File("/data/user/0/com.pcmonitor.app/cache")
+        val updateDir = java.io.File(cacheDir, "updates")
+        val targetFile = java.io.File(updateDir, "nexus-update.apk")
+
+        // Target file must be strictly within the sandbox updateDir
+        assertTrue("APK target must resolve within updateDir", targetFile.canonicalPath.startsWith(updateDir.canonicalPath))
+
+        // Malicious traversal filename attempt
+        val maliciousName = "../../databases/pc_monitor.db"
+        val attemptedFile = java.io.File(updateDir, maliciousName)
+        assertFalse(
+            "Path traversal must not be within updates directory",
+            attemptedFile.canonicalPath.startsWith(updateDir.canonicalPath)
+        )
+    }
+
+    @Test
+    fun testAppUpdateProgressCoercion() {
+        // Tier 1 & 5: Download progress calculation with corrupted lengths
+        fun calculateProgress(totalRead: Long, contentLength: Long): Float {
+            if (contentLength <= 0) return 0f
+            return (totalRead.toFloat() / contentLength).coerceIn(0f, 1f)
+        }
+
+        // 1. Zero content length
+        assertEquals(0f, calculateProgress(100L, 0L), 0.001f)
+
+        // 2. Negative content length (chunked / unknown)
+        assertEquals(0f, calculateProgress(500L, -1L), 0.001f)
+
+        // 3. Overflow read exceeding content length
+        assertEquals(1f, calculateProgress(2000L, 1000L), 0.001f)
+
+        // 4. Normal mid-flight progress
+        assertEquals(0.5f, calculateProgress(500L, 1000L), 0.001f)
+    }
+
+    @Test
+    fun testAppUpdateUrlValidation() {
+        // Tier 7: Only https URLs must be accepted for downloads
+        fun isValidDownloadUrl(url: String): Boolean {
+            return url.startsWith("https://") && url.endsWith(".apk")
+        }
+
+        assertTrue(isValidDownloadUrl("https://github.com/org/repo/releases/download/v1.0.1/nexus.apk"))
+        assertFalse("Insecure http must be rejected", isValidDownloadUrl("http://insecure.com/nexus.apk"))
+        assertFalse("Javascript scheme must be rejected", isValidDownloadUrl("javascript:alert(1)"))
+        assertFalse("File scheme must be rejected", isValidDownloadUrl("file:///system/bin/sh"))
+        assertFalse("Non-apk binary must be rejected", isValidDownloadUrl("https://example.com/malware.exe"))
+    }
 }

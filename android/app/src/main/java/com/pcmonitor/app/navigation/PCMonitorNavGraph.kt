@@ -23,8 +23,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pcmonitor.app.PCMonitorApplication
+import com.pcmonitor.app.ui.components.AppUpdateDialog
 import com.pcmonitor.app.ui.components.BottomNavTab
 import com.pcmonitor.app.ui.components.RetroBottomNavBar
+import com.pcmonitor.app.ui.updater.AppUpdateViewModel
 import com.pcmonitor.app.ui.screens.alerts.AlertDetailScreen
 import com.pcmonitor.app.ui.screens.alerts.AlertsScreen
 import com.pcmonitor.app.ui.screens.alerts.AlertsViewModel
@@ -324,9 +326,18 @@ private fun MainContainerScreen(
     val settingsViewModel = remember {
         SettingsViewModel(app.authRepository, app.userPreferencesRepository, app.deviceRepository)
     }
+    val appUpdateViewModel = remember {
+        AppUpdateViewModel(app.appUpdateRepository)
+    }
 
+    val updateState by appUpdateViewModel.uiState.collectAsState()
     val unreadAlertsCount by app.alertRepository.alerts.collectAsState()
     val unreadCount = unreadAlertsCount.count { !it.isRead }
+
+    // Silently check for app update on app start
+    LaunchedEffect(Unit) {
+        appUpdateViewModel.checkForUpdate(isManualCheck = false)
+    }
 
     Scaffold(
         bottomBar = {
@@ -397,10 +408,20 @@ private fun MainContainerScreen(
                             rootNavController.navigate(Screen.Login.route) {
                                 popUpTo(Screen.Main.route) { inclusive = true }
                             }
+                        },
+                        onCheckForUpdates = {
+                            appUpdateViewModel.checkForUpdate(isManualCheck = true)
                         }
                     )
                 }
             }
+
+            AppUpdateDialog(
+                uiState = updateState,
+                onUpdateClick = { info -> appUpdateViewModel.startDownload(info) },
+                onInstallClick = { file -> appUpdateViewModel.installDownloadedApk(file) },
+                onDismiss = { appUpdateViewModel.dismiss() }
+            )
         }
     }
 }

@@ -89,3 +89,18 @@ test("latestAgentVersion and checkVersion queries return version details", async
     isUnsupported: true,
   });
 });
+
+test("checkAppUpdate returns available update when client versionCode is older", async () => {
+  const t = convexTest(schema, modules);
+  const older = await t.query(api.versions.checkAppUpdate, { currentVersionCode: 1 });
+  expect(older.updateAvailable).toBe(true);
+  expect(older.latestVersionCode).toBe(2);
+  expect(older.latestVersionName).toBe("1.0.1");
+  expect(older.downloadUrl).toContain(".apk");
+
+  const latest = await t.query(api.versions.checkAppUpdate, { currentVersionCode: 2 });
+  expect(latest.updateAvailable).toBe(false);
+
+  const future = await t.query(api.versions.checkAppUpdate, { currentVersionCode: 99 });
+  expect(future.updateAvailable).toBe(false);
+});

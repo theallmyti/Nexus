@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
+import com.pcmonitor.app.BuildConfig
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -65,7 +67,8 @@ import com.pcmonitor.app.ui.theme.TextWhite
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateToThresholds: () -> Unit,
-    onSignedOut: () -> Unit
+    onSignedOut: () -> Unit,
+    onCheckForUpdates: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     var showAccountDialog by remember { mutableStateOf(false) }
@@ -182,6 +185,15 @@ fun SettingsScreen(
                 icon = Icons.Default.Info,
                 title = "About Nexus",
                 onClick = { showAboutDialog = true }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SettingsMenuItem(
+                icon = Icons.Default.SystemUpdate,
+                title = "Check for Updates",
+                subtitle = "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                onClick = onCheckForUpdates
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -527,13 +539,32 @@ fun SettingsScreen(
                     AppLogo(size = 72.dp)
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Nexus v1.0.0\nReal-time PC Hardware Monitoring\nMIT License 2026",
+                        text = "Nexus v${BuildConfig.VERSION_NAME}\nReal-time PC Hardware Monitoring\nMIT License 2026",
                         fontFamily = ReadableFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 22.sp,
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary)
+                            .clickable {
+                                showAboutDialog = false
+                                onCheckForUpdates()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "CHECK FOR UPDATES",
+                            fontFamily = PixelFontFamily,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) DeepNavy else Color.White
+                        )
+                    }
                 }
             },
             confirmButton = {

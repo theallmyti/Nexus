@@ -8,6 +8,7 @@ import com.pcmonitor.app.data.mock.MockAuthRepository
 import com.pcmonitor.app.data.mock.MockDeviceRepository
 import com.pcmonitor.app.data.mock.MockHistoryRepository
 import com.pcmonitor.app.data.repository.AlertRepository
+import com.pcmonitor.app.data.repository.AppUpdateRepository
 import com.pcmonitor.app.data.repository.AuthRepository
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.HistoryRepository
@@ -30,6 +31,8 @@ class PCMonitorApplication : Application() {
         private set
     lateinit var historyRepository: HistoryRepository
         private set
+    lateinit var appUpdateRepository: AppUpdateRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -41,6 +44,7 @@ class PCMonitorApplication : Application() {
         deviceRepository = devRepo
         alertRepository = MockAlertRepository(devRepo, userPreferencesRepository)
         historyRepository = MockHistoryRepository(userPreferencesRepository)
+        appUpdateRepository = AppUpdateRepository(this)
 
         // Fetch current FCM token
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
