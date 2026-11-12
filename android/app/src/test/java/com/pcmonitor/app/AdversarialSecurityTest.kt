@@ -49,10 +49,14 @@ class AdversarialSecurityTest {
     fun testAuthAdversarialVectors() = runBlocking {
         val repo = MockAuthRepository(baseUrl = "")
 
-        // Tier 1 & 7: Case insensitivity and whitespace normalization
-        val loginResult = repo.login(LoginRequest("  USER@EXAMPLE.COM  ", "password123"))
-        assertTrue("Case insensitive email with whitespace must succeed", loginResult.isSuccess)
-        assertEquals("user@example.com", loginResult.getOrNull()?.email)
+        // No backdoor: the old built-in demo account must not sign in, and with no server nothing
+        // signs in locally (accounts exist only on the server).
+        val demoResult = repo.login(LoginRequest("  USER@EXAMPLE.COM  ", "password123"))
+        assertTrue("Built-in demo account must not exist", demoResult.isFailure)
+        assertTrue(
+            "Offline sign-in explains the problem",
+            demoResult.exceptionOrNull()?.message?.contains("Can't reach Nexus") == true
+        )
 
         // Tier 7: Injection strings must fail gracefully without unhandled exception
         val sqliResult = repo.login(LoginRequest("' OR '1'='1", "password123"))
@@ -67,7 +71,11 @@ class AdversarialSecurityTest {
 
         // Tier 1 & 7: Malformed registration
         val shortPassResult = repo.register(RegisterRequest("User", "new@example.com", "123"))
-        assertTrue("Password < 6 chars must fail", shortPassResult.isFailure)
+        assertTrue("Password < 8 chars must fail", shortPassResult.isFailure)
+
+        // Registration never creates a local-only account when the server can't be reached.
+        val offlineRegister = repo.register(RegisterRequest("User", "new@example.com", "password123"))
+        assertTrue("Offline registration must fail", offlineRegister.isFailure)
 
         val malformedEmailResult = repo.register(RegisterRequest("User", "not-an-email", "password123"))
         assertTrue("Malformed email must fail", malformedEmailResult.isFailure)

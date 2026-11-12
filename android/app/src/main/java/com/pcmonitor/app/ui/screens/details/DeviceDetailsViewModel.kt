@@ -58,6 +58,12 @@ class DeviceDetailsViewModel(
         initialValue = DeviceDetailsUiState(isLoading = true)
     )
 
+    init {
+        // Without this the live loop kept polling the first device in the list, so any other
+        // device's page showed only the 15 s snapshot.
+        deviceRepository.setActiveDevice(deviceId)
+    }
+
     fun onTabSelected(tab: DetailTab) {
         selectedTab = tab
     }

@@ -264,25 +264,6 @@ fun ThresholdSettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section: Per Drive Settings
-            Text(
-                text = "Per Drive Settings",
-                fontFamily = PixelFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = ArcadeYellow
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Drive C:
-            DriveSettingCard(driveLetter = "C:", value = "${viewModel.cDriveThreshold.toInt()}% free")
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Drive D:
-            DriveSettingCard(driveLetter = "D:", value = "${viewModel.dDriveThreshold.toInt()}% free")
-
             if (viewModel.saveFeedback != null) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
@@ -422,54 +403,3 @@ private fun ThresholdSliderItem(
     }
 }
 
-@Composable
-private fun DriveSettingCard(
-    driveLetter: String,
-    value: String
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(CreamBackground)
-            .border(1.dp, CreamBorder, RoundedCornerShape(8.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFE8DFC8)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = driveLetter,
-                        fontFamily = PixelFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = CreamText
-                    )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = value,
-                    fontFamily = PixelFontFamily,
-                    fontSize = 12.sp,
-                    color = CreamText
-                )
-            }
-            Text(
-                text = "›",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = CreamBorder
-            )
-        }
-    }
-}

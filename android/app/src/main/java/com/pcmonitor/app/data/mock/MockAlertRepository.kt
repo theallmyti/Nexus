@@ -37,6 +37,10 @@ class MockAlertRepository(
     }
 
     private var activeUserEmail: String = ""
+    // The server has no per-alert delete: alerts dismissed on this phone are hidden locally so the
+    // 15 s sync does not bring them back. Read state is kept across syncs the same way.
+    private val dismissedIds = mutableSetOf<String>()
+    private val readIds = mutableSetOf<String>()
 
     // Zero fake alerts: starts completely empty
     private val _alerts = MutableStateFlow<List<Alert>>(emptyList())
@@ -78,6 +82,8 @@ class MockAlertRepository(
                 }.collect { (loggedIn, email) ->
                     if (!loggedIn || email.isBlank()) {
                         activeUserEmail = ""
+                        dismissedIds.clear()
+                        readIds.clear()
                         _alerts.value = emptyList()
                     } else {
                         activeUserEmail = email
@@ -119,8 +125,9 @@ class MockAlertRepository(
                     val arr = env.optJSONArray("value")
                     if (arr != null) {
                         val fetched = parseConvexAlerts(arr)
-                        // Only update if list has changed
-                        if (fetched.map { it.id } != _alerts.value.map { it.id }) {
+                            .filter { it.id !in dismissedIds }
+                            .map { if (it.id in readIds) it.copy(isRead = true) else it }
+                        if (fetched != _alerts.value) {
                             _alerts.value = fetched
                         }
                     }
@@ -142,7 +149,10 @@ class MockAlertRepository(
             val threshold = obj.optDouble("threshold", 0.0).toFloat()
             val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
             val deviceId = obj.optString("deviceId")
-            val devName = obj.optString("deviceName").ifBlank { "Primary PC" }
+            // The server sends only the device id: name it from the user's device list.
+            val devName = obj.optString("deviceName").ifBlank {
+                deviceRepository.devices.value.find { it.id == deviceId }?.name ?: "Removed device"
+            }
 
             val (severity, category, title, description) = when (type) {
                 "cpuTemp" -> Quadruple(
@@ -162,6 +172,12 @@ class MockAlertRepository(
                     AlertCategory.RAM_USAGE,
                     "RAM Usage High",
                     "System RAM utilization reached ${value.toInt()}% (threshold: ${threshold.toInt()}%)."
+                )
+                "disk" -> Quadruple(
+                    AlertSeverity.WARNING,
+                    AlertCategory.DISK_SPACE,
+                    "Disk Space Low",
+                    "A drive is down to ${value.toInt()}% free (threshold: ${threshold.toInt()}%)."
                 )
                 "offline" -> Quadruple(
                     AlertSeverity.OFFLINE,
@@ -203,12 +219,14 @@ class MockAlertRepository(
     }
 
     override suspend fun markAsRead(alertId: String) {
+        readIds += alertId
         _alerts.value = _alerts.value.map { alert ->
             if (alert.id == alertId) alert.copy(isRead = true) else alert
         }
     }
 
     override suspend fun clearAlert(alertId: String) {
+        dismissedIds += alertId
         _alerts.value = _alerts.value.filter { it.id != alertId }
     }
 

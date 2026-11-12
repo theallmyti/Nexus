@@ -125,22 +125,6 @@ class AuthViewModel(
         }
     }
 
-    fun loginWithGoogle(onSuccess: () -> Unit) {
-        isLoading = true
-        viewModelScope.launch {
-            // Mock Google authentication
-            kotlinx.coroutines.delay(1000L)
-            val user = com.pcmonitor.app.data.model.User(
-                id = "google_user_${System.currentTimeMillis()}",
-                name = "Google User",
-                email = "user@gmail.com"
-            )
-            preferencesRepository.saveUserInfo(user.id, user.name, user.email)
-            isLoading = false
-            onSuccess()
-        }
-    }
-
     private fun validateLogin(): Boolean {
         var valid = true
         if (loginEmail.isBlank() || !loginEmail.contains("@") || !loginEmail.contains(".")) {

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 interface DeviceRepository {
     val devices: StateFlow<List<Device>>
     fun getDevice(deviceId: String): Flow<Device?>
+    /** The device whose screen is open: it gets live (1 s) data; the others refresh every 15 s. */
+    fun setActiveDevice(deviceId: String)
     suspend fun addDevice(device: Device)
     suspend fun removeDevice(deviceId: String)
     suspend fun updateDeviceStats(deviceId: String, stats: HardwareStats)

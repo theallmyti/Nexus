@@ -151,15 +151,19 @@ class MockDeviceRepository(
                     .post(overviewJson.toString().toRequestBody(mediaType))
                     .build()
                 val oResp = withContext(Dispatchers.IO) { httpClient.newCall(oReq).execute() }
-                if (oResp.isSuccessful) {
-                    val body = oResp.body?.string()
-                    if (!body.isNullOrBlank()) {
-                        val env = JSONObject(body)
-                        val valObj = env.optJSONObject("value")
-                        list = valObj?.optJSONArray("devices")
-                    }
-                }
+                val body = oResp.body?.string()
                 oResp.close()
+                if (!body.isNullOrBlank()) {
+                    val env = JSONObject(body)
+                    if (isSignedOutError(env)) {
+                        // The session expired (30 days unused) or was signed out elsewhere: clear it
+                        // so the app returns to the login screen instead of showing empty lists.
+                        Log.i(TAG, "Session is no longer valid; signing out locally.")
+                        userPreferencesRepository?.clearUserInfo()
+                        return
+                    }
+                    list = env.optJSONObject("value")?.optJSONArray("devices")
+                }
             }
 
             if (list == null && !token.isNullOrBlank()) {
@@ -207,8 +211,16 @@ class MockDeviceRepository(
                         else -> rawOs.replaceFirstChar { it.uppercase() }
                     }
 
-                    val kindStr = item.optString("kind", item.optString("type", "laptop")).lowercase()
-                    val devType = if (kindStr.contains("desktop")) DeviceType.DESKTOP else DeviceType.LAPTOP
+                    // Pi from the OS; laptop vs desktop from whether the agent found a battery.
+                    val caps = item.optJSONObject("capabilities")
+                    val kindStr = item.optString("kind", "").lowercase()
+                    val devType = when {
+                        os == "Raspberry Pi" || caps?.optBoolean("isPi", false) == true -> DeviceType.RASPBERRY_PI
+                        kindStr.contains("desktop") -> DeviceType.DESKTOP
+                        kindStr.contains("laptop") -> DeviceType.LAPTOP
+                        caps?.has("hasBattery") == true && !caps.optBoolean("hasBattery") -> DeviceType.DESKTOP
+                        else -> DeviceType.LAPTOP
+                    }
                     val lastSeen = item.optLong("lastSeenAt", item.optLong("lastSeen", 0L))
 
                     val latestObj = item.optJSONObject("latest")
@@ -267,6 +279,11 @@ class MockDeviceRepository(
         }
     }
 
+    // Convex answers a rejected session with status "error" and the ConvexError text "signed out".
+    private fun isSignedOutError(env: JSONObject): Boolean =
+        env.optString("status") == "error" &&
+            (env.optString("errorData").contains("signed out") || env.optString("errorMessage").contains("signed out"))
+
     private fun createEmptyHardwareStats(): HardwareStats {
         return HardwareStats(
             cpu = CpuStats(
@@ -307,8 +324,18 @@ class MockDeviceRepository(
     }
 
     override fun getDevice(deviceId: String): Flow<Device?> {
-        activeDeviceId = deviceId
+        setActiveDevice(deviceId)
         return _devices.map { list -> list.find { it.id == deviceId } }
+    }
+
+    override fun setActiveDevice(deviceId: String) {
+        if (deviceId.isBlank()) return
+        if (activeDeviceId != deviceId) {
+            // Tell the agent right away that someone is watching this device; otherwise live data
+            // only started at the next 15 s keepalive.
+            lastViewerPingMs = 0L
+        }
+        activeDeviceId = deviceId
     }
 
     override suspend fun addDevice(device: Device) {

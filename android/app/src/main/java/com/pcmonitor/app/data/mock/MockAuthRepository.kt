@@ -7,7 +7,6 @@ import com.pcmonitor.app.data.model.User
 import com.pcmonitor.app.data.repository.AuthRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +24,7 @@ class MockAuthRepository(
 
     companion object {
         const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
+        private const val OFFLINE = "Can't reach Nexus. Check your internet connection and try again."
     }
 
     private val httpClient = OkHttpClient()
@@ -32,99 +32,22 @@ class MockAuthRepository(
     private val _authState = MutableStateFlow(AuthState())
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    private val registeredUsers = mutableMapOf<String, Pair<String, String>>(
-        "user@example.com" to Pair("password123", "Demo User")
-    )
+    // Accounts live only on the server (auth.ts): no local or "offline" accounts. An offline
+    // fallback used to accept a built-in demo login and create local-only accounts that had no
+    // session token, which left the app signed in to nothing.
 
     override suspend fun login(request: LoginRequest): Result<User> {
         _authState.value = _authState.value.copy(isLoading = true, error = null)
         val email = request.email.lowercase().trim()
-
-        // 1. Try Convex Cloud auth:signIn if baseUrl is set
-        if (baseUrl.isNotBlank()) {
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            try {
-                val reqJson = JSONObject().apply {
-                    put("path", "auth:signIn")
-                    put("args", JSONObject().apply {
-                        put("email", email)
-                        put("password", request.password)
-                    })
-                }
-                val req = Request.Builder()
-                    .url("$baseUrl/api/action")
-                    .post(reqJson.toString().toRequestBody(mediaType))
-                    .build()
-                val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
-                val bodyStr = resp.body?.string() ?: ""
-                resp.close()
-
-                if (bodyStr.isNotBlank()) {
-                    val envelope = JSONObject(bodyStr)
-                    if (envelope.optString("status") == "success") {
-                        val value = envelope.optJSONObject("value")
-                        val token = value?.optString("token")
-                        if (!token.isNullOrBlank()) {
-                            userPreferencesRepository?.saveSessionToken(token)
-                            val derivedName = email.substringBefore("@").replaceFirstChar { it.uppercase() }
-                            val user = User(
-                                id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                                name = derivedName,
-                                email = email,
-                                createdAt = System.currentTimeMillis()
-                            )
-                            _authState.value = AuthState(
-                                isLoggedIn = true,
-                                currentUser = user,
-                                isLoading = false,
-                                error = null
-                            )
-                            return Result.success(user)
-                        }
-                    } else {
-                        val err = envelope.optString("errorMessage")
-                        if (err.isNotBlank() && (err.contains("Wrong email or password", ignoreCase = true) || err.contains("Too many", ignoreCase = true))) {
-                            _authState.value = _authState.value.copy(isLoading = false, error = err)
-                            return Result.failure(Exception(err))
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // Fallback to local offline validation
-            }
-        }
-
-        delay(800L)
-
-        val credentials = registeredUsers[email]
-        return if (credentials != null) {
-            if (credentials.first == request.password) {
-                val user = User(
-                    id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                    name = credentials.second,
-                    email = email,
-                    createdAt = System.currentTimeMillis()
-                )
-                _authState.value = AuthState(
-                    isLoggedIn = true,
-                    currentUser = user,
-                    isLoading = false,
-                    error = null
-                )
-                Result.success(user)
-            } else {
-                val errorMsg = "Incorrect password. Please try again."
-                _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-                Result.failure(Exception(errorMsg))
-            }
-        } else {
-            val errorMsg = if (email.isBlank() || !email.contains("@") || !email.contains(".")) {
-                "Please enter a valid email address."
-            } else {
-                "Wrong email or password. Please check your credentials."
-            }
-            _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-            Result.failure(Exception(errorMsg))
+        val result = callAuthAction("auth:signIn", mapOf("email" to email, "password" to request.password))
+        return finishAuth(result) { token ->
+            userPreferencesRepository?.saveSessionToken(token)
+            User(
+                id = userIdFor(email),
+                name = email.substringBefore("@").replaceFirstChar { it.uppercase() },
+                email = email,
+                createdAt = System.currentTimeMillis()
+            )
         }
     }
 
@@ -132,101 +55,70 @@ class MockAuthRepository(
         _authState.value = _authState.value.copy(isLoading = true, error = null)
         val email = request.email.lowercase().trim()
 
-        if (email.isBlank() || !email.contains("@") || !email.contains(".")) {
-            val errorMsg = "Please enter a valid email address."
-            _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-            return Result.failure(Exception(errorMsg))
+        val invalid = when {
+            email.isBlank() || !email.contains("@") || !email.contains(".") -> "Please enter a valid email address."
+            request.password.length < 8 -> "Password must be at least 8 characters long."
+            request.name.isBlank() -> "Please enter your name."
+            else -> null
         }
+        if (invalid != null) return fail(invalid)
 
-        if (request.password.length < 8) {
-            val errorMsg = "Password must be at least 8 characters long."
-            _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-            return Result.failure(Exception(errorMsg))
+        val result = callAuthAction(
+            "auth:signUp",
+            mapOf("email" to email, "password" to request.password, "turnstileToken" to request.turnstileToken)
+        )
+        return finishAuth(result) { token ->
+            userPreferencesRepository?.saveSessionToken(token)
+            User(id = userIdFor(email), name = request.name, email = email, createdAt = System.currentTimeMillis())
         }
+    }
 
-        if (request.name.isBlank()) {
-            val errorMsg = "Please enter your name."
-            _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-            return Result.failure(Exception(errorMsg))
-        }
-
-        // 1. Try Convex Cloud auth:signUp if baseUrl is set
-        if (baseUrl.isNotBlank()) {
-            val mediaType = "application/json; charset=utf-8".toMediaType()
+    // Calls a Convex auth action. Success: the session token. Failure: a message to show.
+    private suspend fun callAuthAction(path: String, args: Map<String, String>): Result<String> {
+        if (baseUrl.isBlank()) return Result.failure(Exception(OFFLINE))
+        return withContext(Dispatchers.IO) {
             try {
-                val reqJson = JSONObject().apply {
-                    put("path", "auth:signUp")
-                    put("args", JSONObject().apply {
-                        put("email", email)
-                        put("password", request.password)
-                        put("turnstileToken", request.turnstileToken)
-                    })
+                val body = JSONObject().apply {
+                    put("path", path)
+                    put("args", JSONObject(args))
+                }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val req = Request.Builder().url("$baseUrl/api/action").post(body).build()
+                val text = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+                val env = JSONObject(text)
+                val token = env.optJSONObject("value")?.optString("token").orEmpty()
+                when {
+                    env.optString("status") == "success" && token.isNotBlank() -> Result.success(token)
+                    else -> Result.failure(Exception(serverMessage(env)))
                 }
-                val req = Request.Builder()
-                    .url("$baseUrl/api/action")
-                    .post(reqJson.toString().toRequestBody(mediaType))
-                    .build()
-                val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
-                val bodyStr = resp.body?.string() ?: ""
-                resp.close()
-
-                if (bodyStr.isNotBlank()) {
-                    val envelope = JSONObject(bodyStr)
-                    if (envelope.optString("status") == "success") {
-                        val value = envelope.optJSONObject("value")
-                        val token = value?.optString("token")
-                        if (!token.isNullOrBlank()) {
-                            userPreferencesRepository?.saveSessionToken(token)
-                            val user = User(
-                                id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                                name = request.name,
-                                email = email,
-                                createdAt = System.currentTimeMillis()
-                            )
-                            _authState.value = AuthState(
-                                isLoggedIn = true,
-                                currentUser = user,
-                                isLoading = false,
-                                error = null
-                            )
-                            return Result.success(user)
-                        }
-                    } else {
-                        // Any answer from the server is final (bot check, existing account, ...):
-                        // never fall through to the local offline registration below.
-                        val err = envelope.optString("errorMessage").ifBlank { "Registration failed. Please try again." }
-                        _authState.value = _authState.value.copy(isLoading = false, error = err)
-                        return Result.failure(Exception(err))
-                    }
-                }
-            } catch (_: Exception) {
-                // Fallback to local offline validation
+            } catch (e: Exception) {
+                Result.failure(Exception(OFFLINE))
             }
         }
+    }
 
-        delay(800L)
-
-        if (registeredUsers.containsKey(email)) {
-            val errorMsg = "An account with this email already exists."
-            _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
-            return Result.failure(Exception(errorMsg))
-        }
-
-        registeredUsers[email] = Pair(request.password, request.name)
-
-        val user = User(
-            id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-            name = request.name,
-            email = email,
-            createdAt = System.currentTimeMillis()
+    private fun finishAuth(result: Result<String>, onToken: (String) -> User): Result<User> =
+        result.fold(
+            onSuccess = { token ->
+                val user = onToken(token)
+                _authState.value = AuthState(isLoggedIn = true, currentUser = user, isLoading = false, error = null)
+                Result.success(user)
+            },
+            onFailure = { fail(it.message ?: "Something went wrong. Please try again.") }
         )
-        _authState.value = AuthState(
-            isLoggedIn = true,
-            currentUser = user,
-            isLoading = false,
-            error = null
-        )
-        return Result.success(user)
+
+    private fun fail(message: String): Result<User> {
+        _authState.value = _authState.value.copy(isLoading = false, error = message)
+        return Result.failure(Exception(message))
+    }
+
+    private fun userIdFor(email: String) = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}"
+
+    // ConvexError text arrives in errorData (a string for our errors); errorMessage adds a request id.
+    private fun serverMessage(env: JSONObject): String {
+        val data = env.opt("errorData")
+        if (data is String && data.isNotBlank()) return data
+        val msg = env.optString("errorMessage")
+        return msg.substringAfter("ConvexError: ", msg).substringBefore('\n').ifBlank { "Something went wrong. Please try again." }
     }
 
     override suspend fun logout() {
@@ -258,20 +150,12 @@ class MockAuthRepository(
         )
     }
 
+    // The backend has no password reset yet. This used to claim "Reset code sent" without sending
+    // anything; it now says so plainly.
     override suspend fun requestPasswordReset(email: String): Result<String> {
-        _authState.value = _authState.value.copy(isLoading = true, error = null)
-        delay(1000L)
-
-        val trimmedEmail = email.lowercase().trim()
-        _authState.value = _authState.value.copy(isLoading = false)
-
-        return if (trimmedEmail.contains("@") && trimmedEmail.contains(".")) {
-            Result.success("Reset code sent to $trimmedEmail. Check your inbox.")
-        } else {
-            val errorMsg = "Please enter a valid email address."
-            _authState.value = _authState.value.copy(error = errorMsg)
-            Result.failure(Exception(errorMsg))
-        }
+        val message = "Password reset isn't available yet. If you can't sign in, ask the Nexus team to reset your account."
+        _authState.value = _authState.value.copy(isLoading = false, error = message)
+        return Result.failure(Exception(message))
     }
 
     override suspend fun isLoggedIn(): Boolean {

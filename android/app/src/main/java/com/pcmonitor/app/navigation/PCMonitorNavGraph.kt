@@ -76,7 +76,7 @@ fun PCMonitorNavGraph(
     ) {
         // Splash Screen
         composable(Screen.Splash.route) {
-            val splashViewModel = remember {
+            val splashViewModel = viewModel {
                 SplashViewModel(app.userPreferencesRepository)
             }
             SplashScreen(
@@ -101,7 +101,7 @@ fun PCMonitorNavGraph(
 
         // Onboarding Screen
         composable(Screen.Onboarding.route) {
-            val onboardingViewModel = remember {
+            val onboardingViewModel = viewModel {
                 OnboardingViewModel(app.userPreferencesRepository)
             }
             OnboardingScreen(
@@ -116,7 +116,7 @@ fun PCMonitorNavGraph(
 
         // Auth: Login Screen
         composable(Screen.Login.route) {
-            val authViewModel = remember {
+            val authViewModel = viewModel {
                 AuthViewModel(app.authRepository, app.userPreferencesRepository)
             }
             LoginScreen(
@@ -133,7 +133,7 @@ fun PCMonitorNavGraph(
 
         // Auth: Register Screen
         composable(Screen.Register.route) {
-            val authViewModel = remember {
+            val authViewModel = viewModel {
                 AuthViewModel(app.authRepository, app.userPreferencesRepository)
             }
             RegisterScreen(
@@ -149,7 +149,7 @@ fun PCMonitorNavGraph(
 
         // Auth: Forgot Password Screen
         composable(Screen.ForgotPassword.route) {
-            val authViewModel = remember {
+            val authViewModel = viewModel {
                 AuthViewModel(app.authRepository, app.userPreferencesRepository)
             }
             ForgotPasswordScreen(
@@ -172,7 +172,7 @@ fun PCMonitorNavGraph(
             arguments = listOf(navArgument("deviceId") { type = NavType.StringType })
         ) { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: return@composable
-            val detailsViewModel = remember(deviceId) {
+            val detailsViewModel = viewModel {
                 DeviceDetailsViewModel(deviceId, app.deviceRepository, app.userPreferencesRepository)
             }
             DeviceDetailsScreen(
@@ -269,7 +269,7 @@ fun PCMonitorNavGraph(
             )
         ) { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId")
-            val thresholdsViewModel = remember(deviceId) {
+            val thresholdsViewModel = viewModel {
                 ThresholdSettingsViewModel(
                     preferencesRepository = app.userPreferencesRepository,
                     deviceRepository = app.deviceRepository,
@@ -288,7 +288,7 @@ fun PCMonitorNavGraph(
             arguments = listOf(navArgument("deviceId") { type = NavType.StringType })
         ) { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: ""
-            val historyViewModel = remember(deviceId) {
+            val historyViewModel = viewModel {
                 HistoryViewModel(
                     initialDeviceId = deviceId,
                     historyRepository = app.historyRepository,
@@ -312,21 +312,32 @@ private fun MainContainerScreen(
     var selectedTab by remember { mutableStateOf(BottomNavTab.Home) }
 
     // Shared / persistent view models across the main tabs
-    val homeViewModel = remember {
+    val homeViewModel = viewModel {
         HomeViewModel(app.deviceRepository, app.alertRepository, app.userPreferencesRepository)
     }
-    val devicesViewModel = remember {
+    val devicesViewModel = viewModel {
         DevicesViewModel(app.deviceRepository, app.userPreferencesRepository)
     }
-    val alertsViewModel = remember {
+    val alertsViewModel = viewModel {
         AlertsViewModel(app.alertRepository)
     }
-    val settingsViewModel = remember {
+    val settingsViewModel = viewModel {
         SettingsViewModel(app.authRepository, app.userPreferencesRepository, app.deviceRepository)
     }
 
     val unreadAlertsCount by app.alertRepository.alerts.collectAsState()
     val unreadCount = unreadAlertsCount.count { !it.isRead }
+
+    // Session expired or rejected by the server (the device repository clears it): back to login.
+    val loggedIn by app.userPreferencesRepository.isLoggedIn.collectAsState(initial = true)
+    LaunchedEffect(loggedIn) {
+        if (!loggedIn && rootNavController.currentDestination?.route != Screen.Login.route) {
+            rootNavController.navigate(Screen.Login.route) {
+                popUpTo(Screen.Main.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -396,6 +407,7 @@ private fun MainContainerScreen(
                         onSignedOut = {
                             rootNavController.navigate(Screen.Login.route) {
                                 popUpTo(Screen.Main.route) { inclusive = true }
+                                launchSingleTop = true
                             }
                         }
                     )

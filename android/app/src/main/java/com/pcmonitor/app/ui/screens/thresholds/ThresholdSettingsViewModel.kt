@@ -34,8 +34,6 @@ class ThresholdSettingsViewModel(
     var ramThreshold by mutableFloatStateOf(90f)
     var diskThreshold by mutableFloatStateOf(10f)
 
-    var cDriveThreshold by mutableFloatStateOf(10f)
-    var dDriveThreshold by mutableFloatStateOf(10f)
 
     var saveFeedback by mutableStateOf<String?>(null)
 
@@ -65,6 +63,15 @@ class ThresholdSettingsViewModel(
                 ramThreshold = preferencesRepository.getDeviceRamThreshold(deviceId).first()
                 diskThreshold = preferencesRepository.getDeviceDiskThreshold(deviceId).first()
             }
+            // The server copy is what alerts use (and survives a reinstall or a second phone):
+            // show it over the values stored on this phone.
+            preferencesRepository.fetchThresholdsFromConvex(deviceId)?.let { server ->
+                if (selectedDeviceId != deviceId) return@let // the user switched device meanwhile
+                server.cpu?.let { cpuThreshold = it }
+                server.gpu?.let { gpuThreshold = it }
+                server.ram?.let { ramThreshold = it }
+                if (deviceId != null) isCustomForSelectedDevice = server.isCustom
+            }
         }
     }
 
@@ -72,14 +79,13 @@ class ThresholdSettingsViewModel(
         val devId = selectedDeviceId
         viewModelScope.launch {
             saveFeedback = "Saving thresholds..."
-            if (devId == null) {
+            val synced = if (devId == null) {
                 preferencesRepository.saveThresholds(
                     cpu = cpuThreshold,
                     gpu = gpuThreshold,
                     ram = ramThreshold,
                     disk = diskThreshold
                 )
-                saveFeedback = "Global thresholds saved & synced!"
             } else {
                 preferencesRepository.saveDeviceThresholds(
                     deviceId = devId,
@@ -87,9 +93,12 @@ class ThresholdSettingsViewModel(
                     gpu = gpuThreshold,
                     ram = ramThreshold,
                     disk = diskThreshold
-                )
-                isCustomForSelectedDevice = true
-                saveFeedback = "Device thresholds saved & synced!"
+                ).also { isCustomForSelectedDevice = true }
+            }
+            saveFeedback = when {
+                !synced -> "Saved on this phone, but couldn't reach Nexus. Alerts still use the old values; try again when online."
+                devId == null -> "Global thresholds saved & synced!"
+                else -> "Device thresholds saved & synced!"
             }
             (deviceRepository as? MockDeviceRepository)?.resetAlertCooldowns()
         }
@@ -103,8 +112,6 @@ class ThresholdSettingsViewModel(
                 gpuThreshold = 85f
                 ramThreshold = 90f
                 diskThreshold = 10f
-                cDriveThreshold = 10f
-                dDriveThreshold = 10f
                 preferencesRepository.resetThresholds()
                 saveFeedback = "Reset to default global thresholds."
             } else {

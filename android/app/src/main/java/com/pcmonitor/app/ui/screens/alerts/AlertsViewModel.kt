@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.pcmonitor.app.data.model.Alert
 import com.pcmonitor.app.data.model.AlertSeverity
 import com.pcmonitor.app.data.repository.AlertRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -30,10 +31,11 @@ class AlertsViewModel(
     var currentFilter by mutableStateOf(AlertFilter.ALL)
         private set
 
-    val uiState: StateFlow<AlertsUiState> = alertRepository.alerts.combine(
-        // Trigger on alert change
-        kotlinx.coroutines.flow.flowOf(Unit)
-    ) { alerts, _ ->
+    // The filter is a flow too, so picking a chip recomputes the list (Compose state read inside
+    // `combine` is not observed: the list only changed when a new alert arrived).
+    private val filterFlow = MutableStateFlow(AlertFilter.ALL)
+
+    val uiState: StateFlow<AlertsUiState> = alertRepository.alerts.combine(filterFlow) { alerts, currentFilter ->
         val filtered = when (currentFilter) {
             AlertFilter.ALL -> alerts
             AlertFilter.WARNING -> alerts.filter { it.severity == AlertSeverity.WARNING }
@@ -54,6 +56,7 @@ class AlertsViewModel(
 
     fun onFilterSelected(filter: AlertFilter) {
         currentFilter = filter
+        filterFlow.value = filter
     }
 
     fun markAsRead(alertId: String) {

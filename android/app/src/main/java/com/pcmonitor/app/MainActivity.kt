@@ -17,6 +17,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.pcmonitor.app.navigation.PCMonitorNavGraph
 import com.pcmonitor.app.notification.NotificationHelper
@@ -65,6 +67,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Live polling (1 s) only while the app is on screen: in the background it drained the
+    // battery and kept the agent streaming, using up Convex quota for nobody.
+    override fun onStart() {
+        super.onStart()
+        val app = application as PCMonitorApplication
+        lifecycleScope.launch { app.deviceRepository.startMockSimulation() }
+    }
+
+    override fun onStop() {
+        val app = application as PCMonitorApplication
+        lifecycleScope.launch { app.deviceRepository.stopMockSimulation() }
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

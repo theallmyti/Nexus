@@ -147,7 +147,11 @@ fun PairingProgressScreen(
                         id = v.optString("deviceId"),
                         name = pairedDeviceName,
                         os = detectedOs,
-                        type = if (detectedOs == "Linux") DeviceType.DESKTOP else DeviceType.LAPTOP,
+                        type = when (detectedOs) {
+                            "Raspberry Pi" -> DeviceType.RASPBERRY_PI
+                            "Linux" -> DeviceType.DESKTOP
+                            else -> DeviceType.LAPTOP
+                        },
                         isOnline = true,
                         lastSeen = System.currentTimeMillis()
                     )

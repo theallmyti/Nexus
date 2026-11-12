@@ -35,11 +35,18 @@ class DevicesViewModel(
     var filterStatus by mutableStateOf(DeviceFilterStatus.ALL)
         private set
 
+    // Query and filter are flows too, so typing or picking a chip recomputes the list (Compose state
+    // read inside `combine` is not observed: the list only changed when device data changed).
+    private val queryFlow = MutableStateFlow("")
+    private val statusFlow = MutableStateFlow(DeviceFilterStatus.ALL)
+
     val uiState: StateFlow<DevicesUiState> = combine(
         deviceRepository.devices,
-        preferencesRepository.useFahrenheit
-    ) { devices, fahrenheit ->
-        filterDevices(devices, searchQuery, filterStatus, fahrenheit)
+        preferencesRepository.useFahrenheit,
+        queryFlow,
+        statusFlow
+    ) { devices, fahrenheit, query, status ->
+        filterDevices(devices, query, status, fahrenheit)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -48,11 +55,12 @@ class DevicesViewModel(
 
     fun onSearchQueryChanged(query: String) {
         searchQuery = query
-        // Re-trigger update through repository state flow emission or internal logic
+        queryFlow.value = query
     }
 
     fun onFilterStatusChanged(status: DeviceFilterStatus) {
         filterStatus = status
+        statusFlow.value = status
     }
 
     private fun filterDevices(

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 data class HistoryUiState(
@@ -75,9 +76,18 @@ class HistoryViewModel(
         loadHistory()
     }
 
+    private var loadJob: Job? = null
+
     private fun loadHistory() {
-        viewModelScope.launch {
-            val devId = if (selectedDeviceId.isNotBlank()) selectedDeviceId else "j572h79gypvrbmm71dyaa7bbfd8hny36"
+        // Cancel a slower earlier request so it cannot overwrite the newer selection.
+        loadJob?.cancel()
+        _summary.value = null // shows the loading state instead of the previous device's numbers
+        loadJob = viewModelScope.launch {
+            // Opened without a device: use the first of the user's own devices (the screen shows
+            // the same fallback), waiting for the list if it is still loading.
+            val devId = selectedDeviceId.ifBlank {
+                deviceRepository.devices.first { it.isNotEmpty() }.first().id.also { selectedDeviceId = it }
+            }
             _summary.value = historyRepository.getHistoryForDevice(devId, selectedDays)
         }
     }
