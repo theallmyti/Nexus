@@ -90,7 +90,17 @@ export async function diskBreaches(
 // for most readings; which one counts decides how jumpy alerts are.
 export function breaches(s: SummaryReadings, t: Thresholds): Breach[] {
   const out: Breach[] = [];
-  // TODO(human): push a Breach for each of cpuTemp, gpuTemp and ram that crossed its threshold.
+  // Temperatures use the minute's peak: heat damage happens fast, so a spike counts.
+  // RAM uses the average: memory changes slowly, and a one-second peak is not worth an alert.
+  if (s.cpuTempMax !== undefined && s.cpuTempMax >= t.cpuTempC) {
+    out.push({ type: "cpuTemp", value: s.cpuTempMax, threshold: t.cpuTempC });
+  }
+  if (s.gpuTempMax !== undefined && s.gpuTempMax >= t.gpuTempC) {
+    out.push({ type: "gpuTemp", value: s.gpuTempMax, threshold: t.gpuTempC });
+  }
+  if (s.ramPctAvg >= t.ramPct) {
+    out.push({ type: "ram", value: s.ramPctAvg, threshold: t.ramPct });
+  }
   return out;
 }
 
