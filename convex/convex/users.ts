@@ -17,7 +17,7 @@ export const byEmail = internalQuery({
 });
 
 export const create = internalMutation({
-  args: { email: v.string(), passwordHash: v.string() },
+  args: { email: v.string(), passwordHash: v.string(), name: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("users")
@@ -31,6 +31,7 @@ export const create = internalMutation({
       passwordHash: args.passwordHash,
       createdAt: Date.now(),
       setupDone: false,
+      name: args.name,
     });
   },
 });
@@ -145,5 +146,35 @@ export const finishPasswordReset = internalMutation({
     }
     await ctx.db.insert("sessions", { userId: user._id, tokenHash: args.newTokenHash, lastUsedAt: Date.now() });
     return { ok: true as const };
+  },
+});
+
+// --- Account & Security (auth.changePassword) ---
+
+// The signed-in user's password hash, to check the current password in the action.
+export const passwordHashForSession = internalQuery({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_tokenHash", (q) => q.eq("tokenHash", args.tokenHash))
+      .unique();
+    if (!session) return null;
+    const user = await ctx.db.get(session.userId);
+    return user ? { userId: user._id, email: user.email, passwordHash: user.passwordHash } : null;
+  },
+});
+
+// New password; every other session is signed out, the one used for the change stays.
+export const setPasswordKeepSession = internalMutation({
+  args: { userId: v.id("users"), passwordHash: v.string(), keepTokenHash: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, { passwordHash: args.passwordHash });
+    for (const s of await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()) {
+      if (s.tokenHash !== args.keepTokenHash) await ctx.db.delete(s._id);
+    }
   },
 });

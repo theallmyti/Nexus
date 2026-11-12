@@ -16,6 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pcmonitor.app.ui.screens.settings.AccountSecurityScreen
+import com.pcmonitor.app.ui.screens.settings.AccountSecurityViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -262,6 +264,23 @@ fun PCMonitorNavGraph(
             )
         }
 
+        // Settings → Account → Account & Security
+        composable(Screen.AccountSecurity.route) {
+            val accountViewModel = viewModel {
+                AccountSecurityViewModel(app.authRepository, app.userPreferencesRepository)
+            }
+            AccountSecurityScreen(
+                viewModel = accountViewModel,
+                onBack = { navController.popBackStack() },
+                onSignedOut = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
         // Threshold Settings Screen
         composable(
             route = Screen.ThresholdSettings.route,
@@ -408,6 +427,9 @@ private fun MainContainerScreen(
                         viewModel = settingsViewModel,
                         onNavigateToThresholds = {
                             rootNavController.navigate(Screen.ThresholdSettings.createRoute())
+                        },
+                        onNavigateToAccount = {
+                            rootNavController.navigate(Screen.AccountSecurity.route)
                         },
                         onSignedOut = {
                             rootNavController.navigate(Screen.Login.route) {

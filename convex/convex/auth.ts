@@ -5,7 +5,7 @@ import { action, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { dummyHash, hashPassword, newToken, tokenHash, verifyPassword } from "./passwords";
-import { sessionUser } from "./model";
+import { requireUser, requireUserAndTouch, sessionUser } from "./model";
 import { MAX_ATTEMPTS } from "./users";
 import { verifyTurnstile } from "./turnstile";
 import { EMAIL_NOT_CONFIGURED, emailConfigured, sendEmail } from "./email";
@@ -19,9 +19,15 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+// Display name: no control characters, 1–40 characters, or nothing.
+function cleanName(name: string | undefined): string | undefined {
+  const n = (name ?? "").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 40);
+  return n.length > 0 ? n : undefined;
+}
+
 // Scripts are stopped by a Cloudflare Turnstile token (turnstile.ts), checked before anything else.
 export const signUp = action({
-  args: { email: v.string(), password: v.string(), turnstileToken: v.string() },
+  args: { email: v.string(), password: v.string(), turnstileToken: v.string(), name: v.optional(v.string()) },
   handler: async (ctx, args): Promise<{ token: string }> => {
     await verifyTurnstile(args.turnstileToken, "signup");
     const email = normalizeEmail(args.email);
@@ -37,6 +43,7 @@ export const signUp = action({
     const userId = await ctx.runMutation(internal.users.create, {
       email,
       passwordHash: hashPassword(args.password),
+      name: cleanName(args.name),
     });
     const token = newToken();
     await ctx.runMutation(internal.users.startSession, { userId, tokenHash: tokenHash(token) });
@@ -154,6 +161,74 @@ export const me = query({
   handler: async (ctx, args) => {
     const found = await sessionUser(ctx, args.token);
     return found ? { email: found.user.email } : null;
+  },
+});
+
+// --- Profile and Account & Security (app Settings) ---
+
+export const profile = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    return { email: user.email, name: user.name ?? null, createdAt: user.createdAt, deviceCount: devices.length };
+  },
+});
+
+export const updateProfile = mutation({
+  args: { token: v.string(), name: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUserAndTouch(ctx, args.token);
+    const name = cleanName(args.name);
+    if (!name) throw new ConvexError("Enter a name (up to 40 characters).");
+    await ctx.db.patch(user._id, { name });
+    return { name };
+  },
+});
+
+// Needs the current password. Other sessions are signed out; this one stays signed in.
+export const changePassword = action({
+  args: { token: v.string(), currentPassword: v.string(), newPassword: v.string() },
+  handler: async (ctx, args): Promise<{ ok: true }> => {
+    if (args.newPassword.length < MIN_PASSWORD) {
+      throw new ConvexError(`Use at least ${MIN_PASSWORD} characters for the new password.`);
+    }
+    if (args.newPassword.length > MAX_PASSWORD || args.currentPassword.length > MAX_PASSWORD) {
+      throw new ConvexError(`Use at most ${MAX_PASSWORD} characters for the password.`);
+    }
+    const current = await ctx.runQuery(internal.users.passwordHashForSession, { tokenHash: tokenHash(args.token) });
+    if (!current) throw new ConvexError("signed out");
+    // Wrong current passwords count toward the same 5 per 15 min limit as sign-in.
+    if ((await ctx.runQuery(internal.users.recentAttempts, { email: current.email })) >= MAX_ATTEMPTS) {
+      throw new ConvexError("Too many attempts. Try again in 15 minutes.");
+    }
+    if (!verifyPassword(args.currentPassword, current.passwordHash)) {
+      await ctx.runMutation(internal.users.recordAttempt, { email: current.email });
+      throw new ConvexError("Your current password is wrong.");
+    }
+    await ctx.runMutation(internal.users.setPasswordKeepSession, {
+      userId: current.userId,
+      passwordHash: hashPassword(args.newPassword),
+      keepTokenHash: tokenHash(args.token),
+    });
+    return { ok: true };
+  },
+});
+
+// Signs out every session of this account, including the one making the call.
+export const signOutEverywhere = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const s of sessions) await ctx.db.delete(s._id);
+    return { count: sessions.length };
   },
 });
 

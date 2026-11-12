@@ -7,6 +7,14 @@ data class User(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+/** Settings → profile (auth:profile). */
+data class UserProfile(
+    val email: String,
+    val name: String?,
+    val createdAt: Long,
+    val deviceCount: Int
+)
+
 data class AuthState(
     val isLoggedIn: Boolean = false,
     val currentUser: User? = null,

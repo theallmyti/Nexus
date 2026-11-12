@@ -11,6 +11,7 @@ export default defineSchema({
     passwordHash: v.string(), // scrypt$N$r$p$salt$key
     createdAt: v.number(),
     setupDone: v.boolean(), // first-run threshold setup finished (FR-40)
+    name: v.optional(v.string()), // display name shown in the app (Settings → profile)
   }).index("by_email", ["email"]),
 
   sessions: defineTable({

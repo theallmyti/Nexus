@@ -49,6 +49,8 @@ import com.pcmonitor.app.ui.components.RetroTopBar
 import com.pcmonitor.app.ui.theme.ArcadeYellow
 import com.pcmonitor.app.ui.theme.CardBackground
 import com.pcmonitor.app.ui.theme.CriticalRed
+import com.pcmonitor.app.ui.components.RetroTextField
+import androidx.compose.ui.text.style.TextAlign
 import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.PixelBorderColor
 import com.pcmonitor.app.ui.theme.PixelFontFamily
@@ -62,10 +64,11 @@ import com.pcmonitor.app.ui.theme.TextWhite
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateToThresholds: () -> Unit,
+    onNavigateToAccount: () -> Unit,
     onSignedOut: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
-    var showAccountDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showAppPrefsDialog by remember { mutableStateOf(false) }
 
@@ -90,7 +93,10 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFFFDF6E3))
                     .border(1.5.dp, Color(0xFF8B7355), RoundedCornerShape(10.dp))
-                    .clickable { showAccountDialog = true }
+                    .clickable {
+                        viewModel.openProfile()
+                        showProfileDialog = true
+                    }
                     .padding(16.dp)
             ) {
                 Row(
@@ -142,8 +148,8 @@ fun SettingsScreen(
             SettingsMenuItem(
                 icon = Icons.Default.Person,
                 title = "Account",
-                subtitle = "Profile, devices & security",
-                onClick = { showAccountDialog = true }
+                subtitle = "Password, sessions, your data",
+                onClick = onNavigateToAccount
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -248,13 +254,14 @@ fun SettingsScreen(
         )
     }
 
-    // Account Details Dialog
-    if (showAccountDialog) {
+    // Profile dialog (name card): who you are; the name is saved to the account.
+    if (showProfileDialog) {
+        val profile = viewModel.profile
         AlertDialog(
-            onDismissRequest = { showAccountDialog = false },
+            onDismissRequest = { showProfileDialog = false },
             title = {
                 Text(
-                    text = "Account Details",
+                    text = "Your Profile",
                     fontFamily = PixelFontFamily,
                     color = ArcadeYellow,
                     fontSize = 15.sp
@@ -273,25 +280,18 @@ fun SettingsScreen(
                         PixelCharacter(size = 42.dp)
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    Text(
-                        text = state.userName,
-                        fontFamily = ReadableFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = TextWhite
-                    )
-                    Text(
-                        text = state.userEmail,
-                        fontFamily = ReadableFontFamily,
-                        fontSize = 12.sp,
-                        color = Color(0xFF94A3B8)
+                    RetroTextField(
+                        value = viewModel.profileName,
+                        onValueChange = { viewModel.profileName = it.take(40) },
+                        label = "Display name",
+                        leadingIcon = Icons.Default.Person,
+                        modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    // Beige Info Container
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -301,46 +301,48 @@ fun SettingsScreen(
                             .padding(12.dp)
                     ) {
                         Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "User ID", fontSize = 12.sp, color = Color(0xFF6B5B45))
-                                val shortId = if (state.userEmail.isNotBlank()) {
-                                    "UID-${state.userEmail.hashCode().let { if (it < 0) -it else it } % 10000}"
-                                } else {
-                                    "UID-0000"
-                                }
-                                Text(text = shortId, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2F1C))
-                            }
+                            ProfileRow("Email", state.userEmail)
                             Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Active Fleet", fontSize = 12.sp, color = Color(0xFF6B5B45))
-                                val deviceCount = state.deviceCount
-                                Text(text = "$deviceCount Computer${if (deviceCount != 1) "s" else ""}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PixelGreen)
-                            }
+                            ProfileRow(
+                                "Member since",
+                                profile?.let { memberSince(it.createdAt) } ?: "…"
+                            )
                             Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Status", fontSize = 12.sp, color = Color(0xFF6B5B45))
-                                Text(text = "Authenticated", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2F1C))
-                            }
+                            val count = profile?.deviceCount ?: state.deviceCount
+                            ProfileRow("Computers paired", "$count")
                         }
+                    }
+
+                    if (viewModel.profileError != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = viewModel.profileError ?: "",
+                            fontSize = 12.sp,
+                            color = CriticalRed,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             },
             confirmButton = {
                 Text(
-                    text = "Close",
+                    text = if (viewModel.profileSaving) "Saving…" else "Save",
                     color = ArcadeYellow,
                     fontFamily = PixelFontFamily,
                     modifier = Modifier
-                        .clickable { showAccountDialog = false }
+                        .clickable(enabled = !viewModel.profileSaving) {
+                            viewModel.saveProfileName { showProfileDialog = false }
+                        }
+                        .padding(8.dp)
+                )
+            },
+            dismissButton = {
+                Text(
+                    text = "Cancel",
+                    color = Color(0xFF94A3B8),
+                    fontFamily = PixelFontFamily,
+                    modifier = Modifier
+                        .clickable { showProfileDialog = false }
                         .padding(8.dp)
                 )
             },
@@ -394,7 +396,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsMenuItem(
+internal fun SettingsMenuItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String? = null,
@@ -461,3 +463,13 @@ private fun SettingsMenuItem(
     }
 }
 
+@Composable
+private fun ProfileRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(text = label, fontSize = 12.sp, color = Color(0xFF6B5B45))
+        Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2F1C))
+    }
+}
+
+private fun memberSince(createdAt: Long): String =
+    java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(createdAt))

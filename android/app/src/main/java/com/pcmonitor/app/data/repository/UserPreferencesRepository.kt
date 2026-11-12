@@ -166,6 +166,10 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setUserName(name: String) {
+        context.dataStore.edit { it[USER_NAME] = name }
+    }
+
     suspend fun clearUserInfo() {
         clearSessionToken()
         context.dataStore.edit { prefs ->

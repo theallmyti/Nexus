@@ -4,6 +4,7 @@ import com.pcmonitor.app.data.model.AuthState
 import com.pcmonitor.app.data.model.LoginRequest
 import com.pcmonitor.app.data.model.RegisterRequest
 import com.pcmonitor.app.data.model.User
+import com.pcmonitor.app.data.model.UserProfile
 import com.pcmonitor.app.data.repository.AuthRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
@@ -40,11 +41,17 @@ class MockAuthRepository(
         _authState.value = _authState.value.copy(isLoading = true, error = null)
         val email = request.email.lowercase().trim()
         val result = callAuthAction("auth:signIn", mapOf("email" to email, "password" to request.password))
+        // The display name is stored on the account: read it once signed in.
+        val storedName = result.getOrNull()?.let { token ->
+            userPreferencesRepository?.saveSessionToken(token)
+            callFunction("query", "auth:profile", mapOf("token" to token)).getOrNull()
+                ?.let { (it as? JSONObject)?.optString("name")?.takeIf { n -> n.isNotBlank() && n != "null" } }
+        }
         return finishAuth(result) { token ->
             userPreferencesRepository?.saveSessionToken(token)
             User(
                 id = userIdFor(email),
-                name = email.substringBefore("@").replaceFirstChar { it.uppercase() },
+                name = storedName ?: email.substringBefore("@").replaceFirstChar { it.uppercase() },
                 email = email,
                 createdAt = System.currentTimeMillis()
             )
@@ -65,7 +72,12 @@ class MockAuthRepository(
 
         val result = callAuthAction(
             "auth:signUp",
-            mapOf("email" to email, "password" to request.password, "turnstileToken" to request.turnstileToken)
+            mapOf(
+                "email" to email,
+                "password" to request.password,
+                "turnstileToken" to request.turnstileToken,
+                "name" to request.name.trim()
+            )
         )
         return finishAuth(result) { token ->
             userPreferencesRepository?.saveSessionToken(token)
@@ -179,6 +191,65 @@ class MockAuthRepository(
             )
         }
     }
+
+    // Calls any Convex function ("query" | "mutation" | "action"). Success: its value
+    // (JSONObject, JSONArray, String, Number or null). Failure: a message to show.
+    private suspend fun callFunction(kind: String, path: String, args: Map<String, Any?>): Result<Any?> {
+        if (baseUrl.isBlank()) return Result.failure(Exception(OFFLINE))
+        return withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("path", path)
+                    put("args", JSONObject(args))
+                }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val req = Request.Builder().url("$baseUrl/api/$kind").post(body).build()
+                val text = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+                val env = JSONObject(text)
+                if (env.optString("status") == "success") Result.success(env.opt("value"))
+                else Result.failure(Exception(serverMessage(env)))
+            } catch (e: Exception) {
+                Result.failure(Exception(OFFLINE))
+            }
+        }
+    }
+
+    private fun sessionToken(): String? = userPreferencesRepository?.getSessionToken()?.takeIf { it.isNotBlank() }
+
+    private suspend fun signedIn(kind: String, path: String, extra: Map<String, Any?> = emptyMap()): Result<Any?> {
+        val token = sessionToken() ?: return Result.failure(Exception("You're signed out. Sign in again."))
+        return callFunction(kind, path, mapOf("token" to token) + extra)
+    }
+
+    override suspend fun fetchProfile(): Result<UserProfile> =
+        signedIn("query", "auth:profile").mapCatching { v ->
+            val o = v as? JSONObject ?: throw Exception("Couldn't load your profile.")
+            UserProfile(
+                email = o.optString("email"),
+                name = if (o.isNull("name")) null else o.optString("name"),
+                createdAt = o.optLong("createdAt"),
+                deviceCount = o.optInt("deviceCount")
+            )
+        }
+
+    override suspend fun updateName(name: String): Result<String> =
+        signedIn("mutation", "auth:updateProfile", mapOf("name" to name)).map { v ->
+            (v as? JSONObject)?.optString("name") ?: name.trim()
+        }
+
+    override suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> =
+        signedIn(
+            "action", "auth:changePassword",
+            mapOf("currentPassword" to currentPassword, "newPassword" to newPassword)
+        ).map { }
+
+    override suspend fun signOutEverywhere(): Result<Unit> =
+        signedIn("mutation", "auth:signOutEverywhere").map { }
+
+    override suspend fun exportData(): Result<String> =
+        signedIn("query", "auth:exportData").map { v -> (v as? JSONObject)?.toString(2) ?: v.toString() }
+
+    override suspend fun deleteAccount(): Result<Unit> =
+        signedIn("mutation", "auth:deleteAccount").map { }
 
     override suspend fun isLoggedIn(): Boolean {
         return _authState.value.isLoggedIn

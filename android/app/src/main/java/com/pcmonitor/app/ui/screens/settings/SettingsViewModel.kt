@@ -1,5 +1,9 @@
 package com.pcmonitor.app.ui.screens.settings
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.pcmonitor.app.data.model.UserProfile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pcmonitor.app.data.repository.AuthRepository
@@ -61,6 +65,48 @@ class SettingsViewModel(
         viewModelScope.launch {
             val current = uiState.value.isDarkMode
             preferencesRepository.setDarkMode(!current)
+        }
+    }
+
+    // --- Profile dialog (name card) ---
+    var profile by mutableStateOf<UserProfile?>(null)
+        private set
+    var profileName by mutableStateOf("")
+    var profileError by mutableStateOf<String?>(null)
+        private set
+    var profileSaving by mutableStateOf(false)
+        private set
+
+    /** Loads the account's profile for the dialog (name, member since, device count). */
+    fun openProfile() {
+        profileError = null
+        profileName = uiState.value.userName
+        viewModelScope.launch {
+            authRepository.fetchProfile()
+                .onSuccess { p ->
+                    profile = p
+                    profileName = p.name ?: uiState.value.userName
+                }
+                .onFailure { profileError = it.message }
+        }
+    }
+
+    fun saveProfileName(onSaved: () -> Unit) {
+        val name = profileName.trim()
+        if (name.isEmpty() || name.length > 40) {
+            profileError = "Enter a name (up to 40 characters)."
+            return
+        }
+        profileSaving = true
+        profileError = null
+        viewModelScope.launch {
+            authRepository.updateName(name)
+                .onSuccess { saved ->
+                    preferencesRepository.setUserName(saved)
+                    onSaved()
+                }
+                .onFailure { profileError = it.message }
+            profileSaving = false
         }
     }
 
