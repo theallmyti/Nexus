@@ -198,7 +198,7 @@ async fn connect(url: &str, ui: &Ui) -> ConvexClient {
 }
 
 /// Exit codes: 0 paired, 1 config problem, 3 cancelled.
-pub async fn run(path: &Path, ui: Ui) {
+pub async fn run(path: &Path, ui: Ui, skip_if_paired: bool) {
     if let Ui::Files(dir) = &ui {
         let _ = fs::create_dir_all(dir);
         let _ = fs::remove_file(dir.join("cancel"));
@@ -223,15 +223,18 @@ pub async fn run(path: &Path, ui: Ui) {
     let name = sysinfo::System::host_name().unwrap_or_else(|_| "unknown".to_string());
     let mut client = connect(&config.convex_url, &ui).await;
 
-    let mut hello = BTreeMap::new();
-    hello.insert("secretHash".to_string(), text(&secret_hash));
-    // Already linked to an account: nothing to do. A device paired before accounts existed has
-    // no owner, so it goes through pairing again to be claimed.
-    if let Ok(FunctionResult::Value(Value::Object(o))) = client.mutation("agent:hello", hello).await
-        && o.get("owned") == Some(&Value::Boolean(true))
-    {
-        ui.status("paired", "", 0, "This computer is already paired.");
-        return;
+    // Only skip if explicitly requested (e.g. Inno Setup background installer upgrade check).
+    // If user runs `nexus pair` or uses the tray, always proceed so they can connect or re-pair.
+    if skip_if_paired {
+        let mut hello = BTreeMap::new();
+        hello.insert("secretHash".to_string(), text(&secret_hash));
+        if let Ok(FunctionResult::Value(Value::Object(o))) =
+            client.mutation("agent:hello", hello).await
+            && o.get("owned") == Some(&Value::Boolean(true))
+        {
+            ui.status("paired", "", 0, "This computer is already paired.");
+            return;
+        }
     }
 
     // One code per round; an expired code starts a new round.
@@ -302,6 +305,198 @@ pub async fn run(path: &Path, ui: Ui) {
             "",
             0,
             "The code expired; getting a new one...",
+        );
+    }
+}
+
+/// Executes pairing with live state updates pushed to the native Windows Pairing GUI window.
+#[cfg(windows)]
+pub async fn run_gui_mode(
+    path: &Path,
+    shared: std::sync::Arc<std::sync::Mutex<crate::pair_gui::GuiPairData>>,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+) {
+    use std::sync::atomic::Ordering;
+    use windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW;
+    const WM_PAIR_UPDATE: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_USER + 201;
+
+    let update = |state: &str, code: &str, left: u64, msg: &str| {
+        {
+            let mut d = shared.lock().unwrap();
+            d.state = state.to_string();
+            if !code.is_empty() {
+                d.code = spaced(code);
+            }
+            d.left_secs = left;
+            if !msg.is_empty() {
+                d.message = msg.to_string();
+            }
+        }
+        unsafe {
+            PostMessageW(hwnd, WM_PAIR_UPDATE, 0, 0);
+        }
+    };
+
+    update("connecting", "", 0, "Connecting to Nexus...");
+
+    let mut config = match crate::config::Config::load(path) {
+        Ok(c) => c,
+        Err(e) => {
+            update("error", "", 0, &format!("Cannot read config: {e}"));
+            return;
+        }
+    };
+
+    let secret = match config.ensure_device_secret(path) {
+        Ok(s) => s,
+        Err(e) => {
+            update("error", "", 0, &format!("Device secret error: {e}"));
+            return;
+        }
+    };
+
+    let secret_hash = crate::config::secret_hash(&secret);
+    let name = sysinfo::System::host_name().unwrap_or_else(|_| "unknown".to_string());
+
+    let mut client = loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        match tokio::time::timeout(
+            Duration::from_secs(10),
+            ConvexClient::new(&config.convex_url),
+        )
+        .await
+        {
+            Ok(Ok(c)) => break c,
+            _ => {
+                update("error", "", 0, "Connecting to Nexus backend...");
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
+        }
+    };
+
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let mut args = BTreeMap::new();
+        args.insert("secretHash".to_string(), text(&secret_hash));
+        args.insert("name".to_string(), text(&name));
+        args.insert("os".to_string(), text(os_name()));
+
+        let code = match client.mutation("pairing:start", args).await {
+            Ok(FunctionResult::Value(Value::Object(o))) => match o.get("code") {
+                Some(Value::String(c)) => c.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+
+        if code.is_empty() {
+            update(
+                "error",
+                "",
+                0,
+                "Could not generate pairing code. Retrying...",
+            );
+            tokio::time::sleep(Duration::from_secs(4)).await;
+            continue;
+        }
+
+        let payload = pairing_url(&config.convex_url, &code);
+        let hbm = crate::pair_gui::generate_qr_hbitmap(&payload, 200);
+
+        {
+            let mut d = shared.lock().unwrap();
+            d.url = payload.clone();
+            d.code = spaced(&code);
+            d.state = "pending".to_string();
+            d.left_secs = CODE_LIFETIME.as_secs();
+            d.message = "Scan the QR code or enter code in the app.".to_string();
+            if let Some(old_hbm) = d.qr_bitmap.replace(hbm.unwrap_or(0))
+                && old_hbm != 0
+            {
+                unsafe {
+                    windows_sys::Win32::Graphics::Gdi::DeleteObject(old_hbm as _);
+                }
+            }
+        }
+        unsafe {
+            PostMessageW(hwnd, WM_PAIR_UPDATE, 0, 0);
+        }
+
+        let mut status_args = BTreeMap::new();
+        status_args.insert("code".to_string(), text(&code));
+        status_args.insert("secretHash".to_string(), text(&secret_hash));
+
+        let mut sub = match client.subscribe("pairing:status", status_args).await {
+            Ok(s) => s,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                continue;
+            }
+        };
+
+        let expires = Instant::now() + CODE_LIFETIME;
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
+
+        let confirmed = loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    if cancelled.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    if Instant::now() >= expires {
+                        break false;
+                    }
+                    let left = expires.saturating_duration_since(Instant::now()).as_secs();
+                    update("pending", &code, left, "");
+                }
+                item = sub.next() => {
+                    let st = match item {
+                        Some(FunctionResult::Value(Value::String(s))) => s,
+                        _ => continue,
+                    };
+                    if st == "confirmed" {
+                        break true;
+                    }
+                    if st == "expired" {
+                        break false;
+                    }
+                }
+            }
+        };
+
+        if confirmed {
+            {
+                let mut d = shared.lock().unwrap();
+                d.is_paired = true;
+                d.state = "paired".to_string();
+                d.message = "✓ Paired! This computer is now linked to your account.".to_string();
+            }
+            unsafe {
+                PostMessageW(hwnd, WM_PAIR_UPDATE, 0, 0);
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
+                    hwnd,
+                    windows_sys::Win32::UI::WindowsAndMessaging::WM_CLOSE,
+                    0,
+                    0,
+                );
+            }
+            return;
+        }
+
+        update(
+            "connecting",
+            "",
+            0,
+            "Code expired; generating a new code...",
         );
     }
 }

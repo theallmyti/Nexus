@@ -152,7 +152,7 @@ begin
   PairFolder := Folder;
   DelTree(PairFolder, True, True, True);
   WizardForm.NextButton.Caption := 'Skip';
-  Exec(AgentExe, 'pair --ui "' + PairFolder + '" "' + ConfigPath + '"', '', SW_HIDE, ewNoWait, Code);
+  Exec(AgentExe, 'pair --ui "' + PairFolder + '" --skip-if-paired "' + ConfigPath + '"', '', SW_HIDE, ewNoWait, Code);
   PairTimer := SetTimer(0, 0, 1000, CreateCallback(@PairTick));
 end;
 

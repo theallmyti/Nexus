@@ -17,6 +17,8 @@ mod gpu;
 mod hardware;
 mod pair;
 #[cfg(windows)]
+mod pair_gui;
+#[cfg(windows)]
 mod service;
 mod supervisor;
 #[cfg(windows)]
@@ -647,23 +649,51 @@ fn main() {
                 .block_on(pair::unpair(&path));
             return;
         }
-        // Show a QR code and wait for the owner to confirm (run by the installer).
-        // `pair [--ui <dir>] [config]`: --ui writes the QR image and status for the setup window.
+        // Show a QR code and wait for the owner to confirm.
+        // `pair [--gui] [--skip-if-paired] [--ui <dir>] [config]`
         Some("pair") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
-            let (ui, config_arg) = match rest.first().map(String::as_str) {
-                Some("--ui") => (
-                    pair::Ui::Files(PathBuf::from(rest.get(1).cloned().unwrap_or_default())),
-                    rest.get(2).cloned(),
-                ),
-                _ => (pair::Ui::Terminal, rest.first().cloned()),
-            };
+            let mut skip_if_paired = false;
+            let mut use_gui = false;
+            let mut config_arg: Option<String> = None;
+            let mut ui_dir: Option<PathBuf> = None;
+
+            let mut iter = rest.into_iter();
+            while let Some(arg) = iter.next() {
+                match arg.as_str() {
+                    "--skip-if-paired" => skip_if_paired = true,
+                    "--gui" => use_gui = true,
+                    "--ui" => {
+                        if let Some(dir) = iter.next() {
+                            ui_dir = Some(PathBuf::from(dir));
+                        }
+                    }
+                    other if !other.starts_with("--") => {
+                        config_arg = Some(other.to_string());
+                    }
+                    _ => {}
+                }
+            }
+
             let path = resolve_config_path(config_arg.as_deref());
+
+            #[cfg(windows)]
+            if use_gui {
+                let data_dir = resolve_data_dir();
+                pair_gui::launch_pairing_gui(data_dir, path);
+                return;
+            }
+
+            let ui = match ui_dir {
+                Some(dir) => pair::Ui::Files(dir),
+                None => pair::Ui::Terminal,
+            };
+
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("failed to start the async runtime")
-                .block_on(pair::run(&path, ui));
+                .block_on(pair::run(&path, ui, skip_if_paired));
             return;
         }
         // Started by the Windows Service Control Manager (installed by the setup program).

@@ -586,12 +586,31 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             std::thread::spawn(move || {
                 #[cfg(windows)]
                 {
-                    use std::os::windows::process::CommandExt;
-                    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-                    let _ = std::process::Command::new(&exe_path)
-                        .args(["pair", &config_path.to_string_lossy()])
-                        .creation_flags(CREATE_NEW_CONSOLE)
-                        .spawn();
+                    // If config is readable, launch the pairing GUI directly without console flash.
+                    // If locked by older admin ACLs, elevate via RunAs so UAC prompt opens the GUI with full access.
+                    let is_accessible = std::fs::File::open(&config_path).is_ok();
+                    if is_accessible {
+                        use std::os::windows::process::CommandExt;
+                        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                        let _ = std::process::Command::new(&exe_path)
+                            .args(["pair", "--gui", &config_path.to_string_lossy()])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn();
+                    } else {
+                        let _ = std::process::Command::new("powershell")
+                            .args([
+                                "-NoProfile",
+                                "-WindowStyle",
+                                "Hidden",
+                                "-Command",
+                                &format!(
+                                    "Start-Process -FilePath '{}' -ArgumentList 'pair --gui \"{}\"' -Verb RunAs",
+                                    exe_path.display(),
+                                    config_path.display()
+                                ),
+                            ])
+                            .status();
+                    }
                 }
                 #[cfg(not(windows))]
                 {

@@ -272,10 +272,11 @@ begin
   begin
     LockDir(ExpandConstant('{app}'), True);
     WriteConfig();
-    LockDir(DataDir(), False);
+    LockDir(DataDir(), True);
     SaveStringToFile(DataDir() + '\control.json', '{"paused":false}', False);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\control.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\status.json" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataDir() + '\config.toml" /grant *S-1-5-32-545:M', '', SW_HIDE, ewWaitUntilTerminated, Code);
     InstallPawnIO();
     CreateService();
     if WizardIsTaskSelected('addtopath') then
