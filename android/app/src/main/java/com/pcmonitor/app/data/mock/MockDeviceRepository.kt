@@ -162,11 +162,11 @@ class MockDeviceRepository(
                 oResp.close()
             }
 
-            if (list == null) {
+            if (list == null && !token.isNullOrBlank()) {
                 val devicesReqJson = JSONObject().apply {
                     put("path", "devices:getMyDevices")
                     put("args", JSONObject().apply {
-                        put("userEmail", activeUserEmail)
+                        put("token", token)
                     })
                 }
                 val dReq = Request.Builder()
@@ -190,14 +190,42 @@ class MockDeviceRepository(
                     val item = list.getJSONObject(i)
                     val id = item.optString("id", item.optString("_id"))
                     val name = item.optString("name", item.optString("hostname", "PC"))
-                    val os = item.optString("os", "Windows 11")
+
+                    var rawOs = item.optString("os", "")
+                    if (rawOs.isBlank() || rawOs.equals("null", ignoreCase = true)) {
+                        val caps = item.optJSONObject("capabilities")
+                        rawOs = when {
+                            caps?.optBoolean("isPi", false) == true -> "Raspberry Pi"
+                            caps?.has("windowsMode") == true -> "Windows 11"
+                            else -> "Linux"
+                        }
+                    }
+                    val os = when {
+                        rawOs.contains("win", ignoreCase = true) -> "Windows 11"
+                        rawOs.contains("pi", ignoreCase = true) -> "Raspberry Pi"
+                        rawOs.contains("linux", ignoreCase = true) -> "Linux"
+                        else -> rawOs.replaceFirstChar { it.uppercase() }
+                    }
+
                     val kindStr = item.optString("kind", item.optString("type", "laptop")).lowercase()
                     val devType = if (kindStr.contains("desktop")) DeviceType.DESKTOP else DeviceType.LAPTOP
                     val lastSeen = item.optLong("lastSeenAt", item.optLong("lastSeen", 0L))
-                    val isOnline = item.optBoolean("online", false)
+
+                    val latestObj = item.optJSONObject("latest")
+                    val latestTs = latestObj?.optLong("ts", 0L) ?: 0L
+                    val now = System.currentTimeMillis()
+                    val isOnline = item.optBoolean("online", false) ||
+                        (latestTs > 0L && (now - latestTs) < 45000L) ||
+                        (lastSeen > 0L && (now - lastSeen) < 180000L)
 
                     val existing = _devices.value.find { it.id == id }
-                    val stats = if (isOnline) (existing?.hardwareStats ?: createEmptyHardwareStats()) else createEmptyHardwareStats()
+                    val stats = if (latestObj != null && (latestObj.has("cpu") || latestObj.has("ram"))) {
+                        parseConvexSnapshot(latestObj)
+                    } else if (existing != null && existing.hardwareStats.cpu.totalUtilization > 0f) {
+                        existing.hardwareStats
+                    } else {
+                        createEmptyHardwareStats()
+                    }
 
                     newDevices.add(
                         Device(
@@ -267,6 +295,7 @@ class MockDeviceRepository(
     }
 
     override fun getDevice(deviceId: String): Flow<Device?> {
+        activeDeviceId = deviceId
         return _devices.map { list -> list.find { it.id == deviceId } }
     }
 
@@ -280,15 +309,16 @@ class MockDeviceRepository(
         if (activeDeviceId == deviceId) {
             activeDeviceId = _devices.value.firstOrNull()?.id ?: ""
         }
-        if (activeUserEmail.isNotBlank()) {
+        val token = userPreferencesRepository?.getSessionToken()
+        if (!token.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
                 try {
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val json = JSONObject().apply {
                         put("path", "devices:deleteDevice")
                         put("args", JSONObject().apply {
+                            put("token", token)
                             put("deviceId", deviceId)
-                            put("userEmail", activeUserEmail)
                         })
                     }
                     val req = Request.Builder()
@@ -297,7 +327,7 @@ class MockDeviceRepository(
                         .build()
                     val resp = httpClient.newCall(req).execute()
                     resp.close()
-                    Log.i(TAG, "Unpaired device $deviceId on Convex for user $activeUserEmail")
+                    Log.i(TAG, "Unpaired device $deviceId on Convex")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to unpair device on Convex: ${e.message}")
                 }
@@ -351,8 +381,8 @@ class MockDeviceRepository(
 
                 val now = System.currentTimeMillis()
 
-                // Periodically discover/refresh devices from Convex (every 10s if empty, or every 30s)
-                val interval = if (_devices.value.isEmpty()) 10000L else 30000L
+                // Periodically discover/refresh devices from Convex (every 5s if empty, or every 15s)
+                val interval = if (_devices.value.isEmpty()) 5000L else 15000L
                 if (now - lastDevicesFetchMs > interval) {
                     lastDevicesFetchMs = now
                     fetchDevicesFromConvex()
@@ -365,32 +395,21 @@ class MockDeviceRepository(
                     lastViewerPingMs = now
                     try {
                         val token = userPreferencesRepository?.getSessionToken()
-                        val pingReq = if (!token.isNullOrBlank()) {
-                            val pingJson = JSONObject().apply {
-                                put("path", "dashboard:setViewerAll")
-                                put("args", JSONObject().apply {
-                                    put("token", token)
-                                })
-                            }
-                            Request.Builder()
-                                .url("$CONVEX_BASE_URL/api/mutation")
-                                .post(pingJson.toString().toRequestBody(mediaType))
-                                .build()
-                        } else {
+                        if (!token.isNullOrBlank()) {
                             val pingJson = JSONObject().apply {
                                 put("path", "devices:setViewer")
                                 put("args", JSONObject().apply {
+                                    put("token", token)
                                     put("deviceId", activeDeviceId)
-                                    put("userEmail", activeUserEmail)
                                 })
                             }
-                            Request.Builder()
+                            val pingReq = Request.Builder()
                                 .url("$CONVEX_BASE_URL/api/mutation")
                                 .post(pingJson.toString().toRequestBody(mediaType))
                                 .build()
-                        }
-                        withContext(Dispatchers.IO) {
-                            httpClient.newCall(pingReq).execute().close()
+                            withContext(Dispatchers.IO) {
+                                httpClient.newCall(pingReq).execute().close()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.d(TAG, "Viewer keepalive failed: ${e.message}")
@@ -399,64 +418,68 @@ class MockDeviceRepository(
 
                 var liveStats: HardwareStats? = null
                 var snapshotTs = 0L
-                var isDeviceOnline = false
+                var isDeviceOnline: Boolean? = null
 
                 // Query Convex Cloud directly over cellular / internet (no local bridge)
                 try {
-                    val queryJson = JSONObject().apply {
-                        put("path", "devices:getDeviceLatest")
-                        put("args", JSONObject().apply {
-                            put("deviceId", activeDeviceId)
-                            put("userEmail", activeUserEmail)
-                        })
-                    }
-                    val req = Request.Builder()
-                        .url("$CONVEX_BASE_URL/api/query")
-                        .post(queryJson.toString().toRequestBody(mediaType))
-                        .build()
-                    val resp = withContext(Dispatchers.IO) {
-                        httpClient.newCall(req).execute()
-                    }
-                    if (resp.isSuccessful) {
-                        val body = resp.body?.string()
-                        if (!body.isNullOrBlank()) {
-                            val envelope = JSONObject(body)
-                            val value = envelope.optJSONObject("value")
-                            if (value != null) {
-                                snapshotTs = value.optLong("ts", 0L)
-                                val onlineFlag = value.optBoolean("isOnline", false)
-                                val ageMs = now - snapshotTs
-                                // Genuine real-time telemetry must be fresh (<= 15 seconds) and flagged online
-                                if (snapshotTs > 0L && ageMs < 15000L && onlineFlag) {
-                                    isDeviceOnline = true
-                                    liveStats = parseConvexSnapshot(value)
+                    val token = userPreferencesRepository?.getSessionToken()
+                    if (!token.isNullOrBlank()) {
+                        val queryJson = JSONObject().apply {
+                            put("path", "devices:getDeviceLatest")
+                            put("args", JSONObject().apply {
+                                put("token", token)
+                                put("deviceId", activeDeviceId)
+                            })
+                        }
+                        val req = Request.Builder()
+                            .url("$CONVEX_BASE_URL/api/query")
+                            .post(queryJson.toString().toRequestBody(mediaType))
+                            .build()
+                        val resp = withContext(Dispatchers.IO) {
+                            httpClient.newCall(req).execute()
+                        }
+                        if (resp.isSuccessful) {
+                            val body = resp.body?.string()
+                            if (!body.isNullOrBlank()) {
+                                val envelope = JSONObject(body)
+                                val value = envelope.optJSONObject("value")
+                                if (value != null) {
+                                    snapshotTs = value.optLong("ts", 0L)
+                                    val onlineFlag = value.optBoolean("isOnline", false)
+                                    val ageMs = now - snapshotTs
+                                    if (onlineFlag || (snapshotTs > 0L && ageMs < 45000L)) {
+                                        isDeviceOnline = true
+                                    } else {
+                                        isDeviceOnline = false
+                                    }
+                                    if (value.has("cpu") || value.has("ram")) {
+                                        liveStats = parseConvexSnapshot(value)
+                                    }
                                 }
                             }
                         }
+                        resp.close()
                     }
-                    resp.close()
                 } catch (e: Exception) {
                     Log.d(TAG, "Convex query error: ${e.message}")
                 }
 
                 // Update device in state:
-                // When PC is offline / shut down, immediately set isOnline = false and zero out dynamic stats
                 _devices.value = _devices.value.map { device ->
                     if (device.id == activeDeviceId) {
-                        if (isDeviceOnline && liveStats != null) {
-                            device.copy(
-                                hardwareStats = liveStats,
-                                isOnline = true,
-                                lastSeen = snapshotTs
-                            )
-                        } else {
-                            val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
-                            device.copy(
-                                isOnline = false,
-                                lastSeen = effectiveLastSeen,
-                                hardwareStats = createEmptyHardwareStats()
-                            )
+                        val online = when {
+                            isDeviceOnline == true -> true
+                            isDeviceOnline == false -> false
+                            device.lastSeen > 0L && (now - device.lastSeen < 180000L) -> device.isOnline
+                            else -> false
                         }
+                        val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
+                        val stats = liveStats ?: if (online) device.hardwareStats else createEmptyHardwareStats()
+                        device.copy(
+                            hardwareStats = stats,
+                            isOnline = online,
+                            lastSeen = effectiveLastSeen
+                        )
                     } else {
                         device
                     }

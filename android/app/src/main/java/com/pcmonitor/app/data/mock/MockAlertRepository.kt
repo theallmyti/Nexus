@@ -97,13 +97,14 @@ class MockAlertRepository(
     }
 
     private suspend fun syncAlertsWithConvex() {
-        if (activeUserEmail.isBlank()) return
+        val token = userPreferencesRepository?.getSessionToken()
+        if (token.isNullOrBlank()) return
         val mediaType = "application/json; charset=utf-8".toMediaType()
         try {
             val queryJson = JSONObject().apply {
                 put("path", "devices:getMyAlerts")
                 put("args", JSONObject().apply {
-                    put("userEmail", activeUserEmail)
+                    put("token", token)
                 })
             }
             val req = Request.Builder()
@@ -213,15 +214,14 @@ class MockAlertRepository(
 
     override suspend fun clearAllAlerts() {
         _alerts.value = emptyList()
+        val token = userPreferencesRepository?.getSessionToken() ?: return
         repositoryScope.launch {
             try {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
                 val mutationJson = JSONObject().apply {
                     put("path", "devices:clearAlerts")
                     put("args", JSONObject().apply {
-                        if (activeUserEmail.isNotBlank()) {
-                            put("userEmail", activeUserEmail)
-                        }
+                        put("token", token)
                     })
                 }
                 val req = Request.Builder()

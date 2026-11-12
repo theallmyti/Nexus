@@ -304,7 +304,7 @@ private fun MainContainerScreen(
         AlertsViewModel(app.alertRepository)
     }
     val settingsViewModel = remember {
-        SettingsViewModel(app.authRepository, app.userPreferencesRepository)
+        SettingsViewModel(app.authRepository, app.userPreferencesRepository, app.deviceRepository)
     }
 
     val unreadAlertsCount by app.alertRepository.alerts.collectAsState()

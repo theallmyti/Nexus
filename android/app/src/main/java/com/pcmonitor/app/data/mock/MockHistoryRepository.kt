@@ -28,19 +28,19 @@ class MockHistoryRepository(
         .build()
 
     override suspend fun getHistoryForDevice(deviceId: String, days: Int): HistorySummary {
-        val userEmail = userPreferencesRepository?.userEmail?.first()?.trim() ?: ""
+        val token = userPreferencesRepository?.getSessionToken() ?: ""
 
         val entries = mutableListOf<HistoryEntry>()
 
-        if (deviceId.isNotBlank() && userEmail.isNotBlank()) {
+        if (deviceId.isNotBlank() && token.isNotBlank()) {
             withContext(Dispatchers.IO) {
                 try {
                     val mediaType = "application/json; charset=utf-8".toMediaType()
                     val reqJson = JSONObject().apply {
                         put("path", "devices:getDeviceSummaries")
                         put("args", JSONObject().apply {
+                            put("token", token)
                             put("deviceId", deviceId)
-                            put("userEmail", userEmail)
                             put("days", days)
                         })
                     }

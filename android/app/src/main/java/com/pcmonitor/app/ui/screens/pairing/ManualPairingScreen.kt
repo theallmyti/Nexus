@@ -15,9 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,7 +26,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +44,6 @@ import com.pcmonitor.app.ui.theme.PixelBorderColor
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.PixelGreen
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
-import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextGray
 import com.pcmonitor.app.ui.theme.TextWhite
 
@@ -52,6 +53,7 @@ fun ManualPairingScreen(
     onCodeSubmitted: (String) -> Unit
 ) {
     var code by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
 
     Column(
         modifier = Modifier
@@ -91,36 +93,8 @@ fun ManualPairingScreen(
 
             Spacer(modifier = Modifier.height(36.dp))
 
-            // 6-digit blocks display
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-            ) {
-                for (i in 0 until 6) {
-                    val char = code.getOrNull(i)?.toString() ?: ""
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF162640))
-                            .border(1.5.dp, if (char.isNotEmpty()) ArcadeYellow else PixelBorderColor, RoundedCornerShape(6.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = char,
-                            fontFamily = PixelFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = ArcadeYellow
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Alphanumeric text input allowing direct typing or pasting of agent codes
-            OutlinedTextField(
+            // Hidden real input that drives the 6-box display
+            BasicTextField(
                 value = code,
                 onValueChange = { input ->
                     val clean = input.filter { it.isLetterOrDigit() }.uppercase()
@@ -128,19 +102,69 @@ fun ManualPairingScreen(
                         code = clean
                     }
                 },
-                placeholder = { Text("Type code (e.g. 2SKJFG)", color = Color(0xFF64748B), fontSize = 14.sp) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF162640),
-                    unfocusedContainerColor = Color(0xFF162640),
-                    focusedBorderColor = PixelGreen,
-                    unfocusedBorderColor = PixelBorderColor,
-                    focusedTextColor = TextWhite,
-                    unfocusedTextColor = TextWhite
-                )
+                modifier = Modifier
+                    .size(1.dp) // invisible but focusable
+                    .focusRequester(focusRequester),
+                cursorBrush = SolidColor(Color.Transparent)
+            )
+
+            // 6-character slot display — tap anywhere on this row to focus the hidden input
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { focusRequester.requestFocus() },
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
+            ) {
+                for (i in 0 until 6) {
+                    val char = code.getOrNull(i)?.toString() ?: ""
+                    val isCursor = i == code.length && code.length < 6
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF162640))
+                            .border(
+                                width = 2.dp,
+                                color = when {
+                                    char.isNotEmpty() -> ArcadeYellow
+                                    isCursor -> PixelGreen
+                                    else -> PixelBorderColor
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isCursor) {
+                            // Blinking cursor indicator
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(24.dp)
+                                    .background(PixelGreen)
+                            )
+                        } else {
+                            Text(
+                                text = char,
+                                fontFamily = PixelFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                color = ArcadeYellow
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Tap the boxes above and type the code",
+                fontFamily = ReadableFontFamily,
+                fontSize = 12.sp,
+                color = TextGray,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.weight(1f))

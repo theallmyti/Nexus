@@ -305,7 +305,12 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(text = "User ID", fontSize = 12.sp, color = Color(0xFF6B5B45))
-                                Text(text = "UID-8842-RETRO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2F1C))
+                                val shortId = if (state.userEmail.isNotBlank()) {
+                                    "UID-${state.userEmail.hashCode().let { if (it < 0) -it else it } % 10000}"
+                                } else {
+                                    "UID-0000"
+                                }
+                                Text(text = shortId, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2F1C))
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
@@ -313,7 +318,8 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(text = "Active Fleet", fontSize = 12.sp, color = Color(0xFF6B5B45))
-                                Text(text = "4 Computers", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PixelGreen)
+                                val deviceCount = state.deviceCount
+                                Text(text = "$deviceCount Computer${if (deviceCount != 1) "s" else ""}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PixelGreen)
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(

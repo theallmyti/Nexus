@@ -137,8 +137,8 @@ class AuthViewModel(
             loginEmailError = null
         }
 
-        if (loginPassword.length < 6) {
-            loginPasswordError = "Password must be at least 6 characters."
+        if (loginPassword.length < 8) {
+            loginPasswordError = "Password must be at least 8 characters."
             valid = false
         } else {
             loginPasswordError = null
@@ -162,8 +162,8 @@ class AuthViewModel(
             registerEmailError = null
         }
 
-        if (registerPassword.length < 6) {
-            registerPasswordError = "Password must be at least 6 characters."
+        if (registerPassword.length < 8) {
+            registerPasswordError = "Password must be at least 8 characters."
             valid = false
         } else {
             registerPasswordError = null

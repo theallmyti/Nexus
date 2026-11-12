@@ -19,11 +19,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 class MockAuthRepository(
-    private val userPreferencesRepository: UserPreferencesRepository? = null
+    private val userPreferencesRepository: UserPreferencesRepository? = null,
+    private val baseUrl: String = CONVEX_BASE_URL
 ) : AuthRepository {
 
     companion object {
-        private const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
+        const val CONVEX_BASE_URL = "https://tidy-newt-65.convex.cloud"
     }
 
     private val httpClient = OkHttpClient()
@@ -31,62 +32,66 @@ class MockAuthRepository(
     private val _authState = MutableStateFlow(AuthState())
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    private val registeredUsers = mutableMapOf<String, Pair<String, String>>()
+    private val registeredUsers = mutableMapOf<String, Pair<String, String>>(
+        "user@example.com" to Pair("password123", "Demo User")
+    )
 
     override suspend fun login(request: LoginRequest): Result<User> {
         _authState.value = _authState.value.copy(isLoading = true, error = null)
         val email = request.email.lowercase().trim()
 
-        // 1. Try Convex Cloud auth:signIn
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-        try {
-            val reqJson = JSONObject().apply {
-                put("path", "auth:signIn")
-                put("args", JSONObject().apply {
-                    put("email", email)
-                    put("password", request.password)
-                })
-            }
-            val req = Request.Builder()
-                .url("$CONVEX_BASE_URL/api/action")
-                .post(reqJson.toString().toRequestBody(mediaType))
-                .build()
-            val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
-            val bodyStr = resp.body?.string() ?: ""
-            resp.close()
+        // 1. Try Convex Cloud auth:signIn if baseUrl is set
+        if (baseUrl.isNotBlank()) {
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            try {
+                val reqJson = JSONObject().apply {
+                    put("path", "auth:signIn")
+                    put("args", JSONObject().apply {
+                        put("email", email)
+                        put("password", request.password)
+                    })
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/action")
+                    .post(reqJson.toString().toRequestBody(mediaType))
+                    .build()
+                val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
+                val bodyStr = resp.body?.string() ?: ""
+                resp.close()
 
-            if (bodyStr.isNotBlank()) {
-                val envelope = JSONObject(bodyStr)
-                if (envelope.optString("status") == "success") {
-                    val value = envelope.optJSONObject("value")
-                    val token = value?.optString("token")
-                    if (!token.isNullOrBlank()) {
-                        userPreferencesRepository?.saveSessionToken(token)
-                        val derivedName = email.substringBefore("@").replaceFirstChar { it.uppercase() }
-                        val user = User(
-                            id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                            name = derivedName,
-                            email = email,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        _authState.value = AuthState(
-                            isLoggedIn = true,
-                            currentUser = user,
-                            isLoading = false,
-                            error = null
-                        )
-                        return Result.success(user)
-                    }
-                } else {
-                    val err = envelope.optString("errorMessage")
-                    if (err.isNotBlank() && (err.contains("Wrong email or password", ignoreCase = true) || err.contains("Too many", ignoreCase = true))) {
-                        _authState.value = _authState.value.copy(isLoading = false, error = err)
-                        return Result.failure(Exception(err))
+                if (bodyStr.isNotBlank()) {
+                    val envelope = JSONObject(bodyStr)
+                    if (envelope.optString("status") == "success") {
+                        val value = envelope.optJSONObject("value")
+                        val token = value?.optString("token")
+                        if (!token.isNullOrBlank()) {
+                            userPreferencesRepository?.saveSessionToken(token)
+                            val derivedName = email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                            val user = User(
+                                id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
+                                name = derivedName,
+                                email = email,
+                                createdAt = System.currentTimeMillis()
+                            )
+                            _authState.value = AuthState(
+                                isLoggedIn = true,
+                                currentUser = user,
+                                isLoading = false,
+                                error = null
+                            )
+                            return Result.success(user)
+                        }
+                    } else {
+                        val err = envelope.optString("errorMessage")
+                        if (err.isNotBlank() && (err.contains("Wrong email or password", ignoreCase = true) || err.contains("Too many", ignoreCase = true))) {
+                            _authState.value = _authState.value.copy(isLoading = false, error = err)
+                            return Result.failure(Exception(err))
+                        }
                     }
                 }
+            } catch (_: Exception) {
+                // Fallback to local offline validation
             }
-        } catch (_: Exception) {
-            // Fallback to local offline validation
         }
 
         delay(800L)
@@ -112,24 +117,12 @@ class MockAuthRepository(
                 _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
                 Result.failure(Exception(errorMsg))
             }
-        } else if (email.isNotBlank() && email.contains("@") && email.contains(".") && request.password.length >= 6) {
-            val derivedName = email.substringBefore("@").replaceFirstChar { it.uppercase() }
-            registeredUsers[email] = Pair(request.password, derivedName)
-            val user = User(
-                id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                name = derivedName,
-                email = email,
-                createdAt = System.currentTimeMillis()
-            )
-            _authState.value = AuthState(
-                isLoggedIn = true,
-                currentUser = user,
-                isLoading = false,
-                error = null
-            )
-            Result.success(user)
         } else {
-            val errorMsg = "Please enter a valid email address and password (at least 6 characters)."
+            val errorMsg = if (email.isBlank() || !email.contains("@") || !email.contains(".")) {
+                "Please enter a valid email address."
+            } else {
+                "Wrong email or password. Please check your credentials."
+            }
             _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
             Result.failure(Exception(errorMsg))
         }
@@ -145,8 +138,8 @@ class MockAuthRepository(
             return Result.failure(Exception(errorMsg))
         }
 
-        if (request.password.length < 6) {
-            val errorMsg = "Password must be at least 6 characters long."
+        if (request.password.length < 8) {
+            val errorMsg = "Password must be at least 8 characters long."
             _authState.value = _authState.value.copy(isLoading = false, error = errorMsg)
             return Result.failure(Exception(errorMsg))
         }
@@ -157,55 +150,57 @@ class MockAuthRepository(
             return Result.failure(Exception(errorMsg))
         }
 
-        // 1. Try Convex Cloud auth:signUp
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-        try {
-            val reqJson = JSONObject().apply {
-                put("path", "auth:signUp")
-                put("args", JSONObject().apply {
-                    put("email", email)
-                    put("password", request.password)
-                })
-            }
-            val req = Request.Builder()
-                .url("$CONVEX_BASE_URL/api/action")
-                .post(reqJson.toString().toRequestBody(mediaType))
-                .build()
-            val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
-            val bodyStr = resp.body?.string() ?: ""
-            resp.close()
+        // 1. Try Convex Cloud auth:signUp if baseUrl is set
+        if (baseUrl.isNotBlank()) {
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            try {
+                val reqJson = JSONObject().apply {
+                    put("path", "auth:signUp")
+                    put("args", JSONObject().apply {
+                        put("email", email)
+                        put("password", request.password)
+                    })
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/action")
+                    .post(reqJson.toString().toRequestBody(mediaType))
+                    .build()
+                val resp = withContext(Dispatchers.IO) { httpClient.newCall(req).execute() }
+                val bodyStr = resp.body?.string() ?: ""
+                resp.close()
 
-            if (bodyStr.isNotBlank()) {
-                val envelope = JSONObject(bodyStr)
-                if (envelope.optString("status") == "success") {
-                    val value = envelope.optJSONObject("value")
-                    val token = value?.optString("token")
-                    if (!token.isNullOrBlank()) {
-                        userPreferencesRepository?.saveSessionToken(token)
-                        val user = User(
-                            id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
-                            name = request.name,
-                            email = email,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        _authState.value = AuthState(
-                            isLoggedIn = true,
-                            currentUser = user,
-                            isLoading = false,
-                            error = null
-                        )
-                        return Result.success(user)
-                    }
-                } else {
-                    val err = envelope.optString("errorMessage")
-                    if (err.isNotBlank() && (err.contains("already registered", ignoreCase = true) || err.contains("at least 8 characters", ignoreCase = true))) {
-                        _authState.value = _authState.value.copy(isLoading = false, error = err)
-                        return Result.failure(Exception(err))
+                if (bodyStr.isNotBlank()) {
+                    val envelope = JSONObject(bodyStr)
+                    if (envelope.optString("status") == "success") {
+                        val value = envelope.optJSONObject("value")
+                        val token = value?.optString("token")
+                        if (!token.isNullOrBlank()) {
+                            userPreferencesRepository?.saveSessionToken(token)
+                            val user = User(
+                                id = "user_${email.hashCode().toLong().let { if (it < 0) -it else it }}",
+                                name = request.name,
+                                email = email,
+                                createdAt = System.currentTimeMillis()
+                            )
+                            _authState.value = AuthState(
+                                isLoggedIn = true,
+                                currentUser = user,
+                                isLoading = false,
+                                error = null
+                            )
+                            return Result.success(user)
+                        }
+                    } else {
+                        val err = envelope.optString("errorMessage")
+                        if (err.isNotBlank() && (err.contains("already registered", ignoreCase = true) || err.contains("at least 8 characters", ignoreCase = true))) {
+                            _authState.value = _authState.value.copy(isLoading = false, error = err)
+                            return Result.failure(Exception(err))
+                        }
                     }
                 }
+            } catch (_: Exception) {
+                // Fallback to local offline validation
             }
-        } catch (_: Exception) {
-            // Fallback to local offline validation
         }
 
         delay(800L)
@@ -235,7 +230,7 @@ class MockAuthRepository(
 
     override suspend fun logout() {
         val token = userPreferencesRepository?.getSessionToken()
-        if (!token.isNullOrBlank()) {
+        if (!token.isNullOrBlank() && baseUrl.isNotBlank()) {
             withContext(Dispatchers.IO) {
                 try {
                     val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -246,7 +241,7 @@ class MockAuthRepository(
                         })
                     }
                     val req = Request.Builder()
-                        .url("$CONVEX_BASE_URL/api/mutation")
+                        .url("$baseUrl/api/mutation")
                         .post(reqJson.toString().toRequestBody(mediaType))
                         .build()
                     httpClient.newCall(req).execute().close()

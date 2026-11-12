@@ -140,7 +140,7 @@ fun AddDeviceScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "1. On your Windows PC, double-click Start-PC-Monitor.bat\n2. The QR code and 6-digit code will appear\n3. Tap 'Scan QR Code' above and point your phone at the screen!",
+                        text = "1. On your Windows PC, run nexus-setup-0.2.1.exe to install the Nexus agent\n2. The QR code and 6-digit code will appear during setup\n3. Tap 'Scan QR Code' above and point your phone at the screen!",
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
                         color = TextWhite,

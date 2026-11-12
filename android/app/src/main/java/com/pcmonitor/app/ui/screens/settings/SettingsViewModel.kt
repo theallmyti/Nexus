@@ -3,6 +3,7 @@ package com.pcmonitor.app.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pcmonitor.app.data.repository.AuthRepository
+import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,25 +15,34 @@ data class SettingsUiState(
     val userName: String = "User",
     val userEmail: String = "",
     val isDarkMode: Boolean = true,
-    val useFahrenheit: Boolean = false
+    val useFahrenheit: Boolean = false,
+    val deviceCount: Int = 0
 )
 
 class SettingsViewModel(
     private val authRepository: AuthRepository,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val deviceRepository: DeviceRepository
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
-        preferencesRepository.userName,
-        preferencesRepository.userEmail,
-        preferencesRepository.darkMode,
-        preferencesRepository.useFahrenheit
-    ) { name, email, dark, fahrenheit ->
+        combine(
+            preferencesRepository.userName,
+            preferencesRepository.userEmail,
+            preferencesRepository.darkMode,
+            preferencesRepository.useFahrenheit
+        ) { name, email, dark, fahrenheit ->
+            Triple(Pair(name, email), dark, fahrenheit)
+        },
+        deviceRepository.devices
+    ) { (nameEmail, dark, fahrenheit), devices ->
+        val (name, email) = nameEmail
         SettingsUiState(
             userName = if (name.isNotBlank()) name else (if (email.isNotBlank()) email.substringBefore("@") else "User"),
             userEmail = email,
             isDarkMode = dark,
-            useFahrenheit = fahrenheit
+            useFahrenheit = fahrenheit,
+            deviceCount = devices.size
         )
     }.stateIn(
         scope = viewModelScope,

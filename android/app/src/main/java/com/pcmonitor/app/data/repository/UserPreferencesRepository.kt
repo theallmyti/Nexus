@@ -190,14 +190,15 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun syncThresholdsToConvex(userEmail: String, cpu: Float, gpu: Float, ram: Float) {
-        if (userEmail.isBlank()) return
+        val token = getSessionToken()
+        if (token.isNullOrBlank()) return
         withContext(Dispatchers.IO) {
             try {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
                 val json = JSONObject().apply {
                     put("path", "devices:updateThresholds")
                     put("args", JSONObject().apply {
-                        put("userEmail", userEmail.trim().lowercase())
+                        put("token", token)
                         put("cpuTempC", cpu.toDouble())
                         put("gpuTempC", gpu.toDouble())
                         put("ramPct", ram.toDouble())
@@ -208,7 +209,7 @@ class UserPreferencesRepository(private val context: Context) {
                     .post(json.toString().toRequestBody(mediaType))
                     .build()
                 httpClient.newCall(req).execute().close()
-                android.util.Log.i("UserPreferencesRepo", "Synced thresholds to Convex for $userEmail (CPU: $cpu, GPU: $gpu, RAM: $ram)")
+                android.util.Log.i("UserPreferencesRepo", "Synced thresholds to Convex for user (CPU: $cpu, GPU: $gpu, RAM: $ram)")
             } catch (e: Exception) {
                 android.util.Log.e("UserPreferencesRepo", "Failed to sync thresholds to Convex: ${e.message}")
             }
@@ -216,14 +217,15 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun syncPushTokenToConvex(userEmail: String, fcmToken: String, phoneModel: String = android.os.Build.MODEL) {
-        if (userEmail.isBlank() || fcmToken.isBlank()) return
+        val token = getSessionToken()
+        if (token.isNullOrBlank() || fcmToken.isBlank()) return
         withContext(Dispatchers.IO) {
             try {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
                 val json = JSONObject().apply {
                     put("path", "devices:registerPushToken")
                     put("args", JSONObject().apply {
-                        put("userEmail", userEmail.trim().lowercase())
+                        put("token", token)
                         put("fcmToken", fcmToken.trim())
                         put("phoneModel", phoneModel)
                     })
@@ -233,7 +235,7 @@ class UserPreferencesRepository(private val context: Context) {
                     .post(json.toString().toRequestBody(mediaType))
                     .build()
                 httpClient.newCall(req).execute().close()
-                android.util.Log.i("UserPreferencesRepo", "Synced FCM push token to Convex for $userEmail")
+                android.util.Log.i("UserPreferencesRepo", "Synced FCM push token to Convex for user")
             } catch (e: Exception) {
                 android.util.Log.e("UserPreferencesRepo", "Failed to sync FCM push token to Convex: ${e.message}")
             }

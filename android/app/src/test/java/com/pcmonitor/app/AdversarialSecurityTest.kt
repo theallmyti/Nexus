@@ -47,7 +47,7 @@ class AdversarialSecurityTest {
 
     @Test
     fun testAuthAdversarialVectors() = runBlocking {
-        val repo = MockAuthRepository()
+        val repo = MockAuthRepository(baseUrl = "")
 
         // Tier 1 & 7: Case insensitivity and whitespace normalization
         val loginResult = repo.login(LoginRequest("  USER@EXAMPLE.COM  ", "password123"))
