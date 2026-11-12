@@ -606,12 +606,22 @@ class MockDeviceRepository(
         )?.toFloat() ?: 0f
 
         val clocksArr = cpuObj?.optJSONArray("clocks")
-        val clockSpeed = if (clocksArr != null && clocksArr.length() > 0) {
-            val sum = (0 until clocksArr.length()).sumOf { clocksArr.optDouble(it, 0.0) }
-            (sum / clocksArr.length()).toFloat()
+        val rawClock = if (clocksArr != null && clocksArr.length() > 0) {
+            var sum = 0.0
+            var count = 0
+            for (i in 0 until clocksArr.length()) {
+                val c = clocksArr.optDouble(i, 0.0)
+                if (c > 0.0) {
+                    sum += c
+                    count++
+                }
+            }
+            if (count > 0) (sum / count).toFloat() else 0f
         } else {
             cpuObj?.optDouble("clockSpeedMhz", cpuObj.optDouble("clock", 0.0))?.toFloat() ?: 0f
         }
+        // Normalize to MHz (some Linux governors/kernels report frequency in kHz)
+        val clockSpeed = if (rawClock >= 10_000f) rawClock / 1000f else rawClock
 
         val powerWatts = cpuObj?.optDouble("powerW", 0.0)?.toFloat() ?: 0f
 
@@ -693,9 +703,11 @@ class MockDeviceRepository(
         val battery = if (batteryObj != null) {
             val rawPct = batteryObj.optDouble("pct", 0.0)
             val rawHealth = batteryObj.optDouble("healthPct", 100.0)
+            val rawCharging = batteryObj.optBoolean("charging", false)
+            val isCharging = rawCharging || (rawPct >= 99.0)
             BatteryStats(
                 percentage = kotlin.math.round(rawPct).toInt().coerceIn(0, 100),
-                isCharging = batteryObj.optBoolean("charging", false),
+                isCharging = isCharging,
                 health = batteryObj.optString("health", "Normal"),
                 healthPercent = kotlin.math.round(rawHealth).toInt().coerceIn(0, 100),
                 chargeCycles = batteryObj.optInt("cycles", 0),

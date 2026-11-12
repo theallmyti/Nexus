@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,6 +35,7 @@ import com.pcmonitor.app.data.model.Alert
 import com.pcmonitor.app.data.model.AlertCategory
 import com.pcmonitor.app.data.model.AlertSeverity
 import com.pcmonitor.app.ui.theme.CriticalRed
+import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.OnlineGreen
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
@@ -64,6 +66,13 @@ fun AlertItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val cardBg = if (isDark) WhiteCardBg else Color.White
+    val cardBorder = if (isDark) WhiteCardBorder else Color(0xFFE2E8F0)
+    val titleColor = if (isDark) WhiteCardText else Color(0xFF0F172A)
+    val detailColor = if (isDark) WhiteCardTextSecondary else Color(0xFF64748B)
+    val timeColor = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+
     val severityColor = when (alert.severity) {
         AlertSeverity.CRITICAL -> CriticalRed
         AlertSeverity.WARNING -> WarningOrange
@@ -79,13 +88,12 @@ fun AlertItem(
         AlertCategory.DEVICE_ONLINE -> Icons.Default.CheckCircle
     }
 
-    // Matches the white card container from the reference alerts screen
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(WhiteCardBg)
-            .border(1.5.dp, WhiteCardBorder, RoundedCornerShape(8.dp))
+            .background(cardBg)
+            .border(1.5.dp, cardBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
@@ -120,7 +128,7 @@ fun AlertItem(
                         fontFamily = ReadableFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = WhiteCardText
+                        color = titleColor
                     )
                     if (!alert.isRead) {
                         Spacer(modifier = Modifier.width(6.dp))
@@ -142,7 +150,7 @@ fun AlertItem(
                     text = detailText,
                     fontFamily = ReadableFontFamily,
                     fontSize = 11.sp,
-                    color = WhiteCardTextSecondary
+                    color = detailColor
                 )
             }
 
@@ -152,7 +160,7 @@ fun AlertItem(
                 fontFamily = ReadableFontFamily,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp,
-                color = Color(0xFF64748B)
+                color = timeColor
             )
         }
     }

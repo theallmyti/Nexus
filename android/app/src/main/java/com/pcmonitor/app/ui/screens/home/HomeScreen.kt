@@ -71,6 +71,8 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -78,7 +80,7 @@ fun HomeScreen(
     ) {
         if (state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = ArcadeYellow)
+                CircularProgressIndicator(color = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary)
             }
         } else {
             LazyColumn(
@@ -104,7 +106,7 @@ fun HomeScreen(
                                 fontFamily = PixelFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = ArcadeYellow
+                                color = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
                             )
                         }
 
@@ -115,7 +117,7 @@ fun HomeScreen(
                                     Icon(
                                         imageVector = Icons.Default.Notifications,
                                         contentDescription = "Alerts",
-                                        tint = ArcadeYellow
+                                        tint = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
                                     )
                                 }
                                 if (state.unreadAlertCount > 0) {
@@ -136,14 +138,14 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF2A3F5F))
+                                    .background(if (isDark) Color(0xFF2A3F5F) else Color(0xFFE2E8F0))
                                     .clickable { onProfileClick() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Person,
                                     contentDescription = "Profile",
-                                    tint = ArcadeYellow,
+                                    tint = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -201,7 +203,7 @@ fun HomeScreen(
                             fontFamily = ReadableFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = PixelGreen,
+                            color = if (isDark) PixelGreen else Color(0xFF15803D),
                             modifier = Modifier
                                 .clickable { onViewAllDevicesClick() }
                                 .padding(4.dp)
@@ -218,8 +220,8 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(CreamBackground)
-                                .border(2.dp, CreamBorder, RoundedCornerShape(12.dp))
+                                .background(if (isDark) CreamBackground else Color.White)
+                                .border(1.5.dp, if (isDark) CreamBorder else Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
                                 .padding(20.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -231,7 +233,7 @@ fun HomeScreen(
                                     fontFamily = PixelFontFamily,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CreamText,
+                                    color = if (isDark) CreamText else Color(0xFF0F172A),
                                     textAlign = TextAlign.Center
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -239,7 +241,7 @@ fun HomeScreen(
                                     text = "1. Double-click Start-PC-Monitor on your PC\n2. Tap the button below to scan your QR code!",
                                     fontFamily = ReadableFontFamily,
                                     fontSize = 13.sp,
-                                    color = CreamTextSecondary,
+                                    color = if (isDark) CreamTextSecondary else Color(0xFF64748B),
                                     textAlign = TextAlign.Center,
                                     lineHeight = 18.sp
                                 )
@@ -287,7 +289,7 @@ fun HomeScreen(
                                 fontFamily = ReadableFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = PixelGreen,
+                                color = if (isDark) PixelGreen else Color(0xFF15803D),
                                 modifier = Modifier
                                     .clickable { onAlertsClick() }
                                     .padding(4.dp)

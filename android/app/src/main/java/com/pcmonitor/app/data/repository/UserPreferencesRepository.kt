@@ -209,6 +209,15 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setUserName(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isNotBlank()) {
+            context.dataStore.edit { prefs ->
+                prefs[USER_NAME] = trimmed
+            }
+        }
+    }
+
     suspend fun setUseFahrenheit(useFahrenheit: Boolean) {
         context.dataStore.edit { it[TEMP_UNIT_FAHRENHEIT] = useFahrenheit }
     }

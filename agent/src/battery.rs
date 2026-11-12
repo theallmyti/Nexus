@@ -31,7 +31,8 @@ impl BatteryReader {
         let b = &self.battery;
         Some(BatteryStats {
             pct: f64::from(b.state_of_charge().get::<percent>()).clamp(0.0, 100.0),
-            charging: b.state() == State::Charging,
+            // Connected to AC charger if charging, full, or not discharging
+            charging: b.state() == State::Charging || b.state() == State::Full || b.state() != State::Discharging,
             // New batteries can report slightly above design capacity; show at most 100 %.
             health_pct: f64::from(b.state_of_health().get::<percent>()).clamp(0.0, 100.0),
             cycles: b.cycle_count(),

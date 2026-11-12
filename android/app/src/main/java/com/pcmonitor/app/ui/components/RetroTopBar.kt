@@ -40,8 +40,8 @@ fun RetroTopBar(
 ) {
     val isDark = MaterialTheme.colorScheme.background == DeepNavy
     val topBg = MaterialTheme.colorScheme.background
-    val topTitleColor = if (isDark) ArcadeYellow else Color(0xFF8A6508)
-    val topBorderColor = if (isDark) PixelBorderColor else Color(0xFFD4C7B0)
+    val topTitleColor = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.onBackground
+    val topBorderColor = if (isDark) PixelBorderColor else Color(0xFFE2E8F0)
 
     TopAppBar(
         title = {

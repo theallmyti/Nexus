@@ -51,43 +51,43 @@ private val PCMonitorDarkColorScheme = darkColorScheme(
 )
 
 private val PCMonitorLightColorScheme = lightColorScheme(
-    primary = ArcadeYellowDark,
+    primary = Color(0xFFD97706), // Rich amber (high contrast on white)
     onPrimary = Color.White,
-    primaryContainer = ArcadeYellow,
-    onPrimaryContainer = Color(0xFF2C2214),
+    primaryContainer = Color(0xFFFEF3C7),
+    onPrimaryContainer = Color(0xFF78350F),
 
     secondary = PixelGreenDark,
     onSecondary = Color.White,
-    secondaryContainer = PixelGreenLight,
-    onSecondaryContainer = Color(0xFF1B3D1D),
+    secondaryContainer = Color(0xFFDCFCE7),
+    onSecondaryContainer = Color(0xFF14532D),
 
-    tertiary = CyanAccent,
+    tertiary = Color(0xFF0284C7),
     onTertiary = Color.White,
-    tertiaryContainer = CyanAccentLight,
-    onTertiaryContainer = Color(0xFF00363D),
+    tertiaryContainer = Color(0xFFE0F2FE),
+    onTertiaryContainer = Color(0xFF0369A1),
 
-    background = Color(0xFFF7F3E9), // Clean retro cream background
-    onBackground = Color(0xFF2C2214), // Dark retro brown text
+    background = Color(0xFFF8FAFC), // Modern crisp clean canvas (Slate-50)
+    onBackground = Color(0xFF0F172A), // Dark slate-900 (crisp high contrast)
 
-    surface = Color(0xFFFFFFFF), // Crisp card surface
-    onSurface = Color(0xFF2C2214),
-    surfaceVariant = Color(0xFFEDE4D0),
-    onSurfaceVariant = Color(0xFF6B5B45),
+    surface = Color(0xFFFFFFFF), // Crisp pure white cards & sheets
+    onSurface = Color(0xFF0F172A), // Slate-900
+    surfaceVariant = Color(0xFFF1F5F9), // Slate-100 for secondary containers / inputs
+    onSurfaceVariant = Color(0xFF475569), // Slate-600
 
     error = CriticalRed,
     onError = Color.White,
-    errorContainer = Color(0xFFFFCDD2),
-    onErrorContainer = Color(0xFFB71C1C),
+    errorContainer = Color(0xFFFEE2E2),
+    onErrorContainer = Color(0xFF991B1B),
 
-    outline = Color(0xFF8B7355),
-    outlineVariant = Color(0xFFD4C7B0),
+    outline = Color(0xFFCBD5E1),
+    outlineVariant = Color(0xFFE2E8F0),
 
     inverseSurface = DeepNavy,
     inverseOnSurface = TextWhite,
     inversePrimary = ArcadeYellow,
 
     surfaceTint = Color.Transparent,
-    scrim = Color.Black.copy(alpha = 0.3f)
+    scrim = Color.Black.copy(alpha = 0.4f)
 )
 
 @Composable

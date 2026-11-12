@@ -56,6 +56,8 @@ fun AlertsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -69,7 +71,7 @@ fun AlertsScreen(
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
                             contentDescription = "Clear All",
-                            tint = ArcadeYellow
+                            tint = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -119,7 +121,7 @@ fun AlertsScreen(
                             fontSize = 12.sp,
                             maxLines = 1,
                             softWrap = false,
-                            color = if (isSelected) DeepNavy else filterColor
+                            color = if (isSelected) (if (isDark) DeepNavy else Color.White) else filterColor
                         )
                     }
                 }
@@ -139,7 +141,7 @@ fun AlertsScreen(
                         Icon(
                             imageVector = Icons.Default.NotificationsOff,
                             contentDescription = null,
-                            tint = TextDarkGray,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(52.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -148,14 +150,14 @@ fun AlertsScreen(
                             fontFamily = ReadableFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = TextWhite
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "All systems functioning normally.",
                             fontFamily = ReadableFontFamily,
                             fontSize = 13.sp,
-                            color = TextDarkGray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

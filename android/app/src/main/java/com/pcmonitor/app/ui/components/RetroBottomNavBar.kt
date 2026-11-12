@@ -67,8 +67,8 @@ fun RetroBottomNavBar(
     alertBadgeCount: Int = 0
 ) {
     val isDark = MaterialTheme.colorScheme.background == DeepNavy
-    val navBg = if (isDark) BottomNavBackground else Color(0xFFF3ECE0)
-    val borderColor = if (isDark) PixelBorderColor else Color(0xFFD4C7B0)
+    val navBg = if (isDark) BottomNavBackground else Color.White
+    val borderColor = if (isDark) PixelBorderColor else Color(0xFFE2E8F0)
 
     Box(
         modifier = Modifier
@@ -95,8 +95,8 @@ fun RetroBottomNavBar(
         ) {
             BottomNavTab.entries.forEach { tab ->
                 val isSelected = selectedTab == tab
-                val activeColor = if (isDark) PixelGreen else Color(0xFF2E7D32)
-                val inactiveColor = if (isDark) Color(0xFF64748B) else Color(0xFF8B7355)
+                val activeColor = if (isDark) PixelGreen else Color(0xFF16A34A)
+                val inactiveColor = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
 
                 Column(
                     modifier = Modifier

@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.data.model.Device
 import com.pcmonitor.app.data.model.DeviceType
+import androidx.compose.material3.MaterialTheme
+import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.WhiteCardBg
@@ -48,14 +50,22 @@ fun DeviceCard(
 ) {
     val stats = device.hardwareStats
     val isOnline = device.isOnline
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
 
-    // Matches the crisp white card with subtle border from reference screen 4
+    val cardBg = if (isDark) WhiteCardBg else Color.White
+    val cardBorder = if (isDark) WhiteCardBorder else Color(0xFFE2E8F0)
+    val cardText = if (isDark) WhiteCardText else Color(0xFF0F172A)
+    val cardTextSecondary = if (isDark) WhiteCardTextSecondary else Color(0xFF64748B)
+    val iconTileBg = if (isDark) Color(0xFFF5ECD0) else Color(0xFFF1F5F9)
+    val iconTileBorder = if (isDark) Color(0xFF8B7355).copy(alpha = 0.6f) else Color(0xFFE2E8F0)
+
+    // Crisp card with clean border
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(WhiteCardBg)
-            .border(1.5.dp, WhiteCardBorder, RoundedCornerShape(8.dp))
+            .background(cardBg)
+            .border(1.5.dp, cardBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -65,13 +75,13 @@ fun DeviceCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Beige Device Type Icon Tile
+                // Device Type Icon Tile
                 Box(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFFF5ECD0))
-                        .border(1.dp, Color(0xFF8B7355).copy(alpha = 0.6f), RoundedCornerShape(6.dp)),
+                        .background(iconTileBg)
+                        .border(1.dp, iconTileBorder, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     val icon = when (device.type) {
@@ -97,14 +107,14 @@ fun DeviceCard(
                         fontFamily = ReadableFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        color = WhiteCardText
+                        color = cardText
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${device.os} · ${device.type.label}",
                         fontFamily = ReadableFontFamily,
                         fontSize = 12.sp,
-                        color = WhiteCardTextSecondary
+                        color = cardTextSecondary
                     )
                 }
 
@@ -155,7 +165,7 @@ fun DeviceCard(
                         "${stats.cpu.totalUtilization.toInt()}%"
                     } else "Idle"
                 } else "--"
-                StatMiniBox(value = cpuDisplay, label = "CPU")
+                StatMiniBox(value = cpuDisplay, label = "CPU", textColor = cardText, labelColor = cardTextSecondary)
 
                 // GPU
                 val gpuDisplay = if (isOnline && stats.gpu != null) {
@@ -168,15 +178,15 @@ fun DeviceCard(
                         "Idle"
                     }
                 } else "--"
-                StatMiniBox(value = gpuDisplay, label = "GPU")
+                StatMiniBox(value = gpuDisplay, label = "GPU", textColor = cardText, labelColor = cardTextSecondary)
 
                 // RAM
                 val ramDisplay = if (isOnline) "${stats.ram.usagePercent.toInt()}%" else "--"
-                StatMiniBox(value = ramDisplay, label = "RAM")
+                StatMiniBox(value = ramDisplay, label = "RAM", textColor = cardText, labelColor = cardTextSecondary)
 
                 // Battery
                 val batteryDisplay = if (isOnline && stats.battery != null) "${stats.battery.percentage}%" else "--"
-                StatMiniBox(value = batteryDisplay, label = "Battery")
+                StatMiniBox(value = batteryDisplay, label = "Battery", textColor = cardText, labelColor = cardTextSecondary)
             }
         }
     }
@@ -185,7 +195,9 @@ fun DeviceCard(
 @Composable
 private fun StatMiniBox(
     value: String,
-    label: String
+    label: String,
+    textColor: Color,
+    labelColor: Color
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -193,14 +205,14 @@ private fun StatMiniBox(
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 11.sp,
-            color = WhiteCardText
+            color = textColor
         )
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
             fontFamily = ReadableFontFamily,
             fontSize = 11.sp,
-            color = WhiteCardTextSecondary
+            color = labelColor
         )
     }
 }

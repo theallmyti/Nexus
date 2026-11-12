@@ -62,12 +62,14 @@ fun DevicesScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddDeviceClick,
-                containerColor = ArcadeYellow,
-                contentColor = DeepNavy,
+                containerColor = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary,
+                contentColor = if (isDark) DeepNavy else Color.White,
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -108,7 +110,7 @@ fun DevicesScreen(
                     placeholder = {
                         Text(
                             text = "Search by name, OS or type...",
-                            color = TextDarkGray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp
                         )
                     },
@@ -116,7 +118,7 @@ fun DevicesScreen(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = ArcadeYellow
+                            tint = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
                         )
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -124,7 +126,7 @@ fun DevicesScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
                         unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = ArcadeYellow,
+                        focusedBorderColor = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
                         focusedTextColor = MaterialTheme.colorScheme.onSurface,
                         unfocusedTextColor = MaterialTheme.colorScheme.onSurface
@@ -141,16 +143,28 @@ fun DevicesScreen(
                 ) {
                     DeviceFilterStatus.entries.forEach { status ->
                         val isSelected = viewModel.filterStatus == status
+                        val chipBg = if (isSelected) {
+                            if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                        val chipBorder = if (isSelected) {
+                            if (isDark) ArcadeYellowDark else MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                        val chipTextColor = if (isSelected) {
+                            if (isDark) DeepNavy else Color.White
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) ArcadeYellow else MaterialTheme.colorScheme.surfaceVariant)
-                                .border(
-                                    1.5.dp,
-                                    if (isSelected) ArcadeYellowDark else MaterialTheme.colorScheme.outlineVariant,
-                                    RoundedCornerShape(6.dp)
-                                )
+                                .background(chipBg)
+                                .border(1.5.dp, chipBorder, RoundedCornerShape(6.dp))
                                 .clickable { viewModel.onFilterStatusChanged(status) }
                                 .padding(vertical = 10.dp, horizontal = 2.dp),
                             contentAlignment = Alignment.Center
@@ -166,7 +180,7 @@ fun DevicesScreen(
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
-                                color = if (isSelected) DeepNavy else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = chipTextColor
                             )
                         }
                     }
@@ -194,14 +208,14 @@ fun DevicesScreen(
                                     fontFamily = PixelFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = ArcadeYellow
+                                    color = if (isDark) ArcadeYellow else MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "1. Double-click Start-PC-Monitor on your PC\n2. Tap '+ Add Device' below to scan the code",
                                     fontFamily = ReadableFontFamily,
                                     fontSize = 13.sp,
-                                    color = TextGray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     lineHeight = 18.sp
                                 )
@@ -209,7 +223,7 @@ fun DevicesScreen(
                                 Icon(
                                     imageVector = Icons.Default.Devices,
                                     contentDescription = null,
-                                    tint = TextDarkGray,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(56.dp)
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -218,14 +232,14 @@ fun DevicesScreen(
                                     fontFamily = ReadableFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
-                                    color = TextWhite
+                                    color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = "Try adjusting your search or filters.",
                                     fontFamily = ReadableFontFamily,
                                     fontSize = 13.sp,
-                                    color = TextDarkGray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }

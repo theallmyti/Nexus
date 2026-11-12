@@ -50,6 +50,12 @@ class SettingsViewModel(
         initialValue = SettingsUiState()
     )
 
+    fun updateUserName(name: String) {
+        viewModelScope.launch {
+            preferencesRepository.setUserName(name)
+        }
+    }
+
     fun toggleTemperatureUnit() {
         viewModelScope.launch {
             val current = uiState.value.useFahrenheit

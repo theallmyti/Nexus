@@ -183,14 +183,22 @@ fun DeviceDetailsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // THE RETRO WARM CREAM CONTAINER (STRICT REQUIREMENT)
+            val isDark = MaterialTheme.colorScheme.background == DeepNavy
+            val containerBg = if (isDark) CreamBackground else Color.White
+            val containerBorder = if (isDark) CreamBorder else Color(0xFFE2E8F0)
+            val headerTileBg = if (isDark) CreamSurface else Color(0xFFF1F5F9)
+            val headerTileBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+            val deviceNameColor = if (isDark) CreamText else Color(0xFF0F172A)
+            val deviceSubColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+
+            // Primary Device Details Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(CreamBackground)
-                    .border(2.dp, CreamBorder, RoundedCornerShape(12.dp))
+                    .background(containerBg)
+                    .border(2.dp, containerBorder, RoundedCornerShape(12.dp))
                     .padding(16.dp)
             ) {
                 Column(
@@ -198,7 +206,7 @@ fun DeviceDetailsScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Header Area of Cream Card
+                    // Header Area of Details Card
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -208,8 +216,8 @@ fun DeviceDetailsScreen(
                             modifier = Modifier
                                 .size(64.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(CreamSurface)
-                                .border(1.5.dp, CreamBorderLight, RoundedCornerShape(8.dp)),
+                                .background(headerTileBg)
+                                .border(1.5.dp, headerTileBorder, RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             PixelComputer(size = 48.dp)
@@ -223,14 +231,14 @@ fun DeviceDetailsScreen(
                                 fontFamily = ReadableFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = CreamText
+                                color = deviceNameColor
                             )
 
                             Text(
                                 text = "${device.os} · ${device.type.label}",
                                 fontFamily = ReadableFontFamily,
                                 fontSize = 12.sp,
-                                color = CreamTextSecondary
+                                color = deviceSubColor
                             )
 
                             Spacer(modifier = Modifier.height(4.dp))
@@ -270,7 +278,7 @@ fun DeviceDetailsScreen(
                                 text = formatLastSeen(device.lastSeen, device.isOnline),
                                 fontFamily = ReadableFontFamily,
                                 fontSize = 11.sp,
-                                color = CreamTextSecondary
+                                color = deviceSubColor
                             )
 
                             Text(
@@ -281,14 +289,14 @@ fun DeviceDetailsScreen(
                                 },
                                 fontFamily = ReadableFontFamily,
                                 fontSize = 11.sp,
-                                color = CreamTextSecondary
+                                color = deviceSubColor
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Green Pill Navigation Tabs
+                    // Navigation Tabs
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -297,15 +305,23 @@ fun DeviceDetailsScreen(
                     ) {
                         DetailTab.entries.forEach { tab ->
                             val isSelected = viewModel.selectedTab == tab
+                            val tabBg = if (isSelected) {
+                                if (isDark) CreamGreenAccent else Color(0xFF16A34A)
+                            } else {
+                                if (isDark) CreamSurface else Color(0xFFF1F5F9)
+                            }
+                            val tabBorder = if (isSelected) {
+                                if (isDark) CreamGreenChart else Color(0xFF15803D)
+                            } else {
+                                if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+                            }
+                            val tabTextColor = if (isSelected) TextWhite else deviceNameColor
+
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isSelected) CreamGreenAccent else CreamSurface)
-                                    .border(
-                                        1.5.dp,
-                                        if (isSelected) CreamGreenChart else CreamBorderLight,
-                                        RoundedCornerShape(6.dp)
-                                    )
+                                    .background(tabBg)
+                                    .border(1.5.dp, tabBorder, RoundedCornerShape(6.dp))
                                     .clickable { viewModel.onTabSelected(tab) }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
@@ -314,7 +330,7 @@ fun DeviceDetailsScreen(
                                     fontFamily = PixelFontFamily,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) TextWhite else CreamText
+                                    color = tabTextColor
                                 )
                             }
                         }
@@ -552,7 +568,13 @@ private fun OverviewSection(
     if (stats.battery != null) {
         val bPct = if (isOnline) "${stats.battery.percentage}%" else "--"
         val bSub = if (isOnline) {
-            if (stats.battery.isCharging) "Charging (${stats.battery.powerRateWatts}W)" else "Discharging"
+            when {
+                stats.battery.isCharging && stats.battery.percentage >= 99 -> "Fully Charged (AC)"
+                stats.battery.isCharging -> if (stats.battery.powerRateWatts > 0f) "Charging (${stats.battery.powerRateWatts.toInt()}W)" else "Charging (AC)"
+                stats.battery.percentage >= 99 -> "Fully Charged (AC)"
+                stats.battery.powerRateWatts == 0f && stats.battery.percentage > 90 -> "Plugged In"
+                else -> "Discharging"
+            }
         } else "Device offline"
         val bProg = if (isOnline) stats.battery.percentage / 100f else 0f
         CreamBarMetricCard(
@@ -607,12 +629,21 @@ private fun CreamMetricCard(
     mainValue: String,
     sparklineData: List<Float>
 ) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val cardBg = if (isDark) CreamSurface else Color.White
+    val cardBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val iconTileBg = if (isDark) Color(0xFFE8DFC8) else Color(0xFFF1F5F9)
+    val iconTileBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val iconTint = if (isDark) CreamBorder else MaterialTheme.colorScheme.primary
+    val titleColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val valueColor = if (isDark) CreamText else Color(0xFF0F172A)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(CreamSurface)
-            .border(1.5.dp, CreamBorderLight, RoundedCornerShape(8.dp))
+            .background(cardBg)
+            .border(1.5.dp, cardBorder, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Row(
@@ -623,14 +654,14 @@ private fun CreamMetricCard(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE8DFC8))
-                    .border(1.dp, CreamBorderLight, CircleShape),
+                    .background(iconTileBg)
+                    .border(1.dp, iconTileBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = title,
-                    tint = CreamBorder,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -642,7 +673,7 @@ private fun CreamMetricCard(
                     text = title,
                     fontFamily = ReadableFontFamily,
                     fontSize = 12.sp,
-                    color = CreamTextSecondary
+                    color = titleColor
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -650,7 +681,7 @@ private fun CreamMetricCard(
                     fontFamily = PixelFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    color = CreamText
+                    color = valueColor
                 )
             }
 
@@ -674,12 +705,23 @@ private fun CreamBarMetricCard(
     subValue: String,
     progress: Float
 ) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val cardBg = if (isDark) CreamSurface else Color.White
+    val cardBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val iconTileBg = if (isDark) Color(0xFFE8DFC8) else Color(0xFFF1F5F9)
+    val iconTileBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val iconTint = if (isDark) CreamBorder else MaterialTheme.colorScheme.primary
+    val titleColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val valueColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val subColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val trackBg = if (isDark) Color(0xFFE5DAC0) else Color(0xFFF1F5F9)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(CreamSurface)
-            .border(1.5.dp, CreamBorderLight, RoundedCornerShape(8.dp))
+            .background(cardBg)
+            .border(1.5.dp, cardBorder, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -691,14 +733,14 @@ private fun CreamBarMetricCard(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFE8DFC8))
-                        .border(1.dp, CreamBorderLight, CircleShape),
+                        .background(iconTileBg)
+                        .border(1.dp, iconTileBorder, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
-                        tint = CreamBorder,
+                        tint = iconTint,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -710,7 +752,7 @@ private fun CreamBarMetricCard(
                         text = title,
                         fontFamily = ReadableFontFamily,
                         fontSize = 12.sp,
-                        color = CreamTextSecondary
+                        color = titleColor
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -718,7 +760,7 @@ private fun CreamBarMetricCard(
                         fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
-                        color = CreamText
+                        color = valueColor
                     )
                 }
 
@@ -726,7 +768,7 @@ private fun CreamBarMetricCard(
                     text = subValue,
                     fontFamily = ReadableFontFamily,
                     fontSize = 11.sp,
-                    color = CreamTextSecondary
+                    color = subColor
                 )
             }
 
@@ -736,7 +778,7 @@ private fun CreamBarMetricCard(
             RetroProgressBar(
                 progress = progress,
                 color = CreamGreenChart,
-                trackColor = Color(0xFFE5DAC0),
+                trackColor = trackBg,
                 modifier = Modifier.fillMaxWidth(),
                 height = 10.dp
             )
@@ -747,6 +789,12 @@ private fun CreamBarMetricCard(
 @Composable
 private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean) {
     var showThreads by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val titleColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val secColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val offlineBg = if (isDark) CreamSurface else Color(0xFFF1F5F9)
+    val offlineBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val trackBg = if (isDark) Color(0xFFE5DAC0) else Color(0xFFF1F5F9)
 
     Column {
         Text(
@@ -754,7 +802,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
-            color = CreamText
+            color = titleColor
         )
         Spacer(modifier = Modifier.height(4.dp))
         val coreCount = cpu.coreUtilizations.size
@@ -771,22 +819,24 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
             fontFamily = ReadableFontFamily,
             fontWeight = FontWeight.Medium,
             fontSize = 12.sp,
-            color = CreamTextSecondary
+            color = secColor
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Grid of Key Stats
+        // Grid of Key Stats (Package Temp and Clock Speed - Power box removed per user request)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val pkgTempStr = if (isOnline && cpu.packageTemperature > 0f) {
                 if (useFahrenheit) "${(cpu.packageTemperature * 9f / 5f + 32).toInt()}°F" else "${cpu.packageTemperature.toInt()}°C"
             } else "--"
 
-            val clockStr = if (isOnline && cpu.clockSpeedMhz > 0f) {
-                "${(cpu.clockSpeedMhz / 1000f).let { "%.1f".format(it) }} GHz"
-            } else "--"
-
-            val powerStr = if (isOnline && cpu.powerWatts > 0f) {
-                "${cpu.powerWatts.toInt()} W"
+            val clockGhz = when {
+                cpu.clockSpeedMhz >= 1_000_000f -> cpu.clockSpeedMhz / 1_000_000_000f
+                cpu.clockSpeedMhz >= 10_000f -> cpu.clockSpeedMhz / 1_000_000f
+                cpu.clockSpeedMhz >= 100f -> cpu.clockSpeedMhz / 1000f
+                else -> cpu.clockSpeedMhz
+            }
+            val clockStr = if (isOnline && clockGhz > 0f) {
+                String.format(java.util.Locale.US, "%.2f GHz", clockGhz)
             } else "--"
 
             CreamStatPill(
@@ -799,11 +849,6 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                 value = clockStr,
                 modifier = Modifier.weight(1f)
             )
-            CreamStatPill(
-                label = "Power",
-                value = powerStr,
-                modifier = Modifier.weight(1f)
-            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -813,8 +858,8 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(CreamSurface)
-                    .border(1.dp, CreamBorderLight, RoundedCornerShape(8.dp))
+                    .background(offlineBg)
+                    .border(1.dp, offlineBorder, RoundedCornerShape(8.dp))
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -822,7 +867,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                     text = "PC is offline · No live core metrics available",
                     fontFamily = ReadableFontFamily,
                     fontSize = 13.sp,
-                    color = CreamTextSecondary
+                    color = secColor
                 )
             }
         } else {
@@ -836,7 +881,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                     fontFamily = ReadableFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
-                    color = CreamTextSecondary
+                    color = secColor
                 )
 
                 Text(
@@ -867,7 +912,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                             text = label,
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
-                            color = CreamText,
+                            color = titleColor,
                             maxLines = 1,
                             modifier = Modifier.width(92.dp)
                         )
@@ -887,7 +932,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                         RetroProgressBar(
                             progress = (util / 100f).coerceIn(0f, 1f),
                             color = CreamGreenAccent,
-                            trackColor = Color(0xFFE5DAC0),
+                            trackColor = trackBg,
                             modifier = Modifier.weight(1f),
                             height = 8.dp
                         )
@@ -898,7 +943,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                             text = "${util.toInt()}%",
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
-                            color = CreamTextSecondary,
+                            color = secColor,
                             modifier = Modifier.width(36.dp)
                         )
                     }
@@ -917,7 +962,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                             text = "Thread $index",
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
-                            color = CreamText,
+                            color = titleColor,
                             maxLines = 1,
                             modifier = Modifier.width(92.dp)
                         )
@@ -937,7 +982,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                         RetroProgressBar(
                             progress = (util / 100f).coerceIn(0f, 1f),
                             color = CreamGreenAccent,
-                            trackColor = Color(0xFFE5DAC0),
+                            trackColor = trackBg,
                             modifier = Modifier.weight(1f),
                             height = 8.dp
                         )
@@ -948,7 +993,7 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                             text = "${util.toInt()}%",
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
-                            color = CreamTextSecondary,
+                            color = secColor,
                             modifier = Modifier.width(36.dp)
                         )
                     }
@@ -960,12 +1005,17 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
 
 @Composable
 private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val titleColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val secColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val trackBg = if (isDark) Color(0xFFE5DAC0) else Color(0xFFF1F5F9)
+
     if (gpu == null) {
         Text(
             text = if (isOnline) "No dedicated GPU detected on this machine." else "No dedicated GPU detected or PC is offline.",
             fontFamily = ReadableFontFamily,
             fontSize = 13.sp,
-            color = CreamTextSecondary,
+            color = secColor,
             modifier = Modifier.padding(vertical = 16.dp)
         )
         return
@@ -977,7 +1027,7 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
-            color = CreamText
+            color = titleColor
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -988,7 +1038,7 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
         } else "--"
         val utilStr = if (isOnline) "${gpu.utilization.toInt()}%" else "--"
         val fanStr = if (isOnline) {
-            if (gpu.fanSpeedPercent > 0f) "${gpu.fanSpeedPercent.toInt()}%" else "Auto / 0%"
+            if (gpu.fanSpeedPercent > 0f) "${gpu.fanSpeedPercent.toInt()}%" else "Auto"
         } else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1042,14 +1092,14 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
             text = if (isOnline) "VRAM Usage (${gpu.vramUsedMb} MB / ${gpu.vramTotalMb} MB)" else "VRAM Usage (Offline)",
             fontFamily = ReadableFontFamily,
             fontSize = 12.sp,
-            color = CreamTextSecondary
+            color = secColor
         )
         Spacer(modifier = Modifier.height(6.dp))
         val vramProgress = if (isOnline && gpu.vramTotalMb > 0) gpu.vramUsedMb.toFloat() / gpu.vramTotalMb else 0f
         RetroProgressBar(
             progress = vramProgress,
             color = CreamGreenChart,
-            trackColor = Color(0xFFE5DAC0),
+            trackColor = trackBg,
             modifier = Modifier.fillMaxWidth(),
             height = 10.dp
         )
@@ -1058,13 +1108,19 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
 
 @Composable
 private fun RamSection(ram: RamStats, isOnline: Boolean) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val titleColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val secColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+    val offlineBg = if (isDark) CreamSurface else Color(0xFFF1F5F9)
+    val offlineBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+
     Column {
         Text(
             text = if (isOnline && ram.speedMhz > 0 && ram.type.isNotBlank()) "Memory Metrics (${ram.type} @ ${ram.speedMhz} MHz)" else if (isOnline && ram.type.isNotBlank()) "Memory Metrics (${ram.type})" else "Memory Metrics",
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
-            color = CreamText
+            color = titleColor
         )
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -1088,7 +1144,7 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
             fontFamily = ReadableFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
-            color = CreamTextSecondary
+            color = secColor
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -1097,8 +1153,8 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(CreamSurface)
-                    .border(1.dp, CreamBorderLight, RoundedCornerShape(8.dp))
+                    .background(offlineBg)
+                    .border(1.dp, offlineBorder, RoundedCornerShape(8.dp))
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1106,7 +1162,7 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
                     text = if (!isOnline) "PC is offline · No active processes" else "No process data available",
                     fontFamily = ReadableFontFamily,
                     fontSize = 13.sp,
-                    color = CreamTextSecondary
+                    color = secColor
                 )
             }
         } else {
@@ -1122,7 +1178,7 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
                         text = proc.name,
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
-                        color = CreamText
+                        color = titleColor
                     )
 
                     Row {
@@ -1137,7 +1193,7 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
                             text = "${proc.cpuPercent}% CPU",
                             fontFamily = PixelFontFamily,
                             fontSize = 11.sp,
-                            color = CreamTextSecondary
+                            color = secColor
                         )
                     }
                 }
@@ -1150,13 +1206,16 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
 private fun BatterySection(device: Device) {
     val b = device.hardwareStats.battery
     val isOnline = device.isOnline
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val titleColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val secColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
 
     if (b == null && isOnline) {
         Text(
             text = "No battery detected (Desktop or Server machine).",
             fontFamily = ReadableFontFamily,
             fontSize = 13.sp,
-            color = CreamTextSecondary,
+            color = secColor,
             modifier = Modifier.padding(vertical = 16.dp)
         )
         return
@@ -1168,14 +1227,22 @@ private fun BatterySection(device: Device) {
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
-            color = CreamText
+            color = titleColor
         )
         Spacer(modifier = Modifier.height(10.dp))
 
         val pctStr = if (isOnline && b != null) "${b.percentage}%" else "--"
         val healthStr = if (isOnline && b != null) "${b.healthPercent}%" else "--"
         val cyclesStr = if (isOnline && b != null) "${b.chargeCycles}" else "--"
-        val stateStr = if (isOnline && b != null) (if (b.isCharging) "Charging" else "Discharging") else "Offline"
+        val stateStr = if (isOnline && b != null) {
+            when {
+                b.isCharging && b.percentage >= 99 -> "Fully Charged"
+                b.isCharging -> "Charging"
+                b.percentage >= 99 -> "Fully Charged"
+                b.powerRateWatts == 0f && b.percentage > 85 -> "Plugged In"
+                else -> "Discharging"
+            }
+        } else "Offline"
         val rateStr = if (isOnline && b != null) "${b.powerRateWatts} W" else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1215,28 +1282,44 @@ private fun formatLastSeen(lastSeenMs: Long, isOnline: Boolean): String {
 
 @Composable
 private fun CreamStatPill(label: String, value: String, modifier: Modifier = Modifier) {
+    val isDark = MaterialTheme.colorScheme.background == DeepNavy
+    val pillBg = if (isDark) CreamSurface else Color(0xFFF8FAFC)
+    val pillBorder = if (isDark) CreamBorderLight else Color(0xFFE2E8F0)
+    val valueColor = if (isDark) CreamText else Color(0xFF0F172A)
+    val labelColor = if (isDark) CreamTextSecondary else Color(0xFF64748B)
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(CreamSurface)
-            .border(1.dp, CreamBorderLight, RoundedCornerShape(6.dp))
-            .padding(vertical = 8.dp, horizontal = 6.dp),
+            .height(60.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(pillBg)
+            .border(1.dp, pillBorder, RoundedCornerShape(8.dp))
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(
                 text = value,
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = CreamText
+                fontSize = 12.sp,
+                color = valueColor,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,
                 fontFamily = ReadableFontFamily,
                 fontSize = 10.sp,
-                color = CreamTextSecondary
+                color = labelColor,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
     }
