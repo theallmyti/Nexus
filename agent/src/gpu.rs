@@ -42,14 +42,19 @@ pub struct GpuStats {
 fn read(nvml: &Nvml) -> Result<GpuStats, NvmlError> {
     let device = nvml.device_by_index(0)?;
     let mem = device.memory_info()?;
+    let temp_c = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
+    let util_pct = device.utilization_rates().map(|u| u.gpu).unwrap_or(0);
+    let power_w = device.power_usage().map(|p| f64::from(p) / 1000.0).unwrap_or(0.0);
+    let clock_mhz = device.clock_info(Clock::Graphics).unwrap_or(0);
+    let fan_pct = device.fan_speed(0).ok();
     Ok(GpuStats {
-        temp_c: device.temperature(TemperatureSensor::Gpu)?,
-        util_pct: device.utilization_rates()?.gpu,
+        temp_c,
+        util_pct,
         vram_used_mb: mem.used / 1_048_576,
         vram_total_mb: mem.total / 1_048_576,
-        power_w: f64::from(device.power_usage()?) / 1000.0,
-        clock_mhz: device.clock_info(Clock::Graphics)?,
-        fan_pct: device.fan_speed(0).ok(),
+        power_w,
+        clock_mhz,
+        fan_pct,
     })
 }
 
@@ -95,6 +100,7 @@ pub struct GpuReader {
     exe: Option<PathBuf>,
     stream: Option<Stream>,
     last_idle_read: Option<Instant>,
+    last_stats: Option<GpuStats>,
 }
 
 impl GpuReader {
@@ -105,8 +111,11 @@ impl GpuReader {
             exe,
             stream: None,
             last_idle_read: None,
+            last_stats: None,
         };
-        if reader.one_shot().await.is_none() {
+        if let Some(stats) = reader.one_shot().await {
+            reader.last_stats = Some(stats);
+        } else {
             reader.exe = None;
         }
         reader
@@ -137,7 +146,7 @@ impl GpuReader {
             warn!("gpu helper failed to start");
             return;
         };
-        let latest = Arc::new(Mutex::new(None));
+        let latest = Arc::new(Mutex::new(self.last_stats.clone()));
         if let Some(stdout) = child.stdout.take() {
             let slot = latest.clone();
             tokio::spawn(async move {
@@ -155,7 +164,7 @@ impl GpuReader {
     }
 
     /// Live: newest reading from the streaming helper (started on first use).
-    /// Idle: stops the stream; one reading at most every `IDLE_EVERY`, otherwise None.
+    /// Idle: stops the stream; one reading at most every `IDLE_EVERY`, otherwise last reading.
     pub async fn read(&mut self, live: bool) -> Option<GpuStats> {
         if !self.present() {
             return None;
@@ -164,8 +173,21 @@ impl GpuReader {
             if self.stream.is_none() {
                 self.start_stream();
             }
+            if let Some(stream) = self.stream.as_mut() {
+                // If helper died unexpectedly, restart it
+                if let Ok(Some(_)) = stream.child.try_wait() {
+                    self.stream = None;
+                    self.start_stream();
+                }
+            }
             let stream = self.stream.as_ref()?;
-            return stream.latest.lock().ok()?.clone();
+            if let Ok(guard) = stream.latest.lock() {
+                if let Some(stats) = guard.as_ref() {
+                    self.last_stats = Some(stats.clone());
+                    return Some(stats.clone());
+                }
+            }
+            return self.last_stats.clone();
         }
         if let Some(mut s) = self.stream.take() {
             let _ = s.child.start_kill(); // nobody watching: stop the helper
@@ -174,9 +196,14 @@ impl GpuReader {
             .last_idle_read
             .is_none_or(|t| t.elapsed() >= IDLE_EVERY);
         if !due {
-            return None;
+            return self.last_stats.clone();
         }
         self.last_idle_read = Some(Instant::now());
-        self.one_shot().await
+        if let Some(stats) = self.one_shot().await {
+            self.last_stats = Some(stats.clone());
+            Some(stats)
+        } else {
+            self.last_stats.clone()
+        }
     }
 }

@@ -10,14 +10,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.pcmonitor.app.navigation.PCMonitorNavGraph
 import com.pcmonitor.app.notification.NotificationHelper
-import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.PCMonitorTheme
 import com.pcmonitor.app.util.PairingHelper
 
@@ -48,11 +50,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val app = application as PCMonitorApplication
         setContent {
-            PCMonitorTheme {
+            val isDarkMode by app.userPreferencesRepository.darkMode.collectAsState(initial = true)
+            PCMonitorTheme(darkTheme = isDarkMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = DeepNavy
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     PCMonitorNavGraph(
                         initialPairingCode = incomingPairingCode.value,

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -71,7 +72,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "Settings"
@@ -203,7 +204,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "Use Fahrenheit (°F)", color = TextWhite)
+                        Text(text = "Use Fahrenheit (°F)", color = MaterialTheme.colorScheme.onSurface)
                         Switch(
                             checked = state.useFahrenheit,
                             onCheckedChange = { viewModel.toggleTemperatureUnit() },
@@ -221,7 +222,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "Dark Mode", color = TextWhite)
+                        Text(text = "Dark Mode", color = MaterialTheme.colorScheme.onSurface)
                         Switch(
                             checked = state.isDarkMode,
                             onCheckedChange = { viewModel.toggleDarkMode() },
@@ -243,7 +244,7 @@ fun SettingsScreen(
                         .padding(8.dp)
                 )
             },
-            containerColor = DeepNavy
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 
@@ -343,7 +344,7 @@ fun SettingsScreen(
                         .padding(8.dp)
                 )
             },
-            containerColor = DeepNavy
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 
@@ -370,7 +371,7 @@ fun SettingsScreen(
                     Text(
                         text = "Nexus v1.0.0\nReal-time PC Hardware Monitoring\nMIT License 2026",
                         fontFamily = ReadableFontFamily,
-                        color = Color(0xFFCBD5E1),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 22.sp,
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -387,7 +388,7 @@ fun SettingsScreen(
                         .padding(8.dp)
                 )
             },
-            containerColor = DeepNavy
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 }

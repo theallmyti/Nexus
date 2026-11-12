@@ -13,6 +13,7 @@ import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
+import type * as devices from "../devices.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as model from "../model.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   cleanup: typeof cleanup;
   crons: typeof crons;
   dashboard: typeof dashboard;
+  devices: typeof devices;
   http: typeof http;
   migrations: typeof migrations;
   model: typeof model;

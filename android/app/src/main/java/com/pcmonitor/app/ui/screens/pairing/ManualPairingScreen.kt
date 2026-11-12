@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,11 +55,12 @@ fun ManualPairingScreen(
 ) {
     var code by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+    val isDark = MaterialTheme.colorScheme.background.red < 0.5f
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "Enter Code",
@@ -78,7 +80,7 @@ fun ManualPairingScreen(
                 fontFamily = ReadableFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
-                color = TextWhite
+                color = MaterialTheme.colorScheme.onBackground
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -87,7 +89,7 @@ fun ManualPairingScreen(
                 text = "Displayed on your computer screen after running Start-PC-Monitor.",
                 fontFamily = ReadableFontFamily,
                 fontSize = 13.sp,
-                color = TextGray,
+                color = if (isDark) TextGray else Color(0xFF6B5B45),
                 textAlign = TextAlign.Center
             )
 
@@ -124,13 +126,13 @@ fun ManualPairingScreen(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF162640))
+                            .background(if (isDark) Color(0xFF162640) else Color(0xFFEADFC9))
                             .border(
                                 width = 2.dp,
                                 color = when {
                                     char.isNotEmpty() -> ArcadeYellow
                                     isCursor -> PixelGreen
-                                    else -> PixelBorderColor
+                                    else -> if (isDark) PixelBorderColor else Color(0xFF8B7355)
                                 },
                                 shape = RoundedCornerShape(8.dp)
                             ),

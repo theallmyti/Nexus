@@ -22,7 +22,9 @@ sealed class Screen(val route: String) {
     data object AlertDetail : Screen("alert_detail/{alertId}") {
         fun createRoute(alertId: String) = "alert_detail/$alertId"
     }
-    data object ThresholdSettings : Screen("threshold_settings")
+    data object ThresholdSettings : Screen("threshold_settings?deviceId={deviceId}") {
+        fun createRoute(deviceId: String? = null) = if (deviceId != null) "threshold_settings?deviceId=$deviceId" else "threshold_settings"
+    }
     data object History : Screen("history/{deviceId}") {
         fun createRoute(deviceId: String) = "history/$deviceId"
     }

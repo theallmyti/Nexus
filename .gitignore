@@ -1,5 +1,6 @@
 ﻿# Build output
 agent/target/
+node_modules/
 convex/node_modules/
 android/build/
 android/app/build/
@@ -9,6 +10,7 @@ android/.kotlin/
 android/local.properties
 *.apk
 *.aab
+*.exe
 
 # Design docs (kept local, not in the repo)
 docs/
@@ -18,6 +20,8 @@ docs/
 *.keystore
 *.jks
 google-services.json
+config.toml
+help
 agent/dev.toml
 agent/config.toml
 *.secret
@@ -26,11 +30,13 @@ agent/config.toml
 .DS_Store
 Thumbs.db
 .vscode/
+*.log
 agent/agent.log
 agent/agent.log.err
 installer/vendor/
 dist/
 **/convex-url*.txt
+scratch/
 
 # Convex database backups (personal data)
 backups/

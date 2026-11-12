@@ -162,6 +162,10 @@ export const pushLatest = mutation({
     if (!device) {
       throw new ConvexError("unknown device");
     }
+    const existing = await ctx.db
+      .query("latest")
+      .withIndex("by_device", (q) => q.eq("deviceId", device._id))
+      .unique();
     // lastSeenAt is set by summaries only (Architecture.md §2.2), not per live push.
     const row = {
       deviceId: device._id,
@@ -170,17 +174,13 @@ export const pushLatest = mutation({
       ts: Date.now(),
       cpu: { util: args.cpuUtil, packageTemp: args.cpuTemp, perCoreUtil: args.perCoreUtil, clocks: args.clocks },
       ram: { usedPct: args.ramUsedPct, detail: args.ram, topProcs: args.topProcs },
-      disks: args.disks,
-      uptimeSec: args.uptimeSec,
-      usage: args.usage,
-      battery: args.battery,
-      gpu: args.gpu,
-      pi: args.docker ? { docker: args.docker } : undefined,
+      disks: args.disks ?? existing?.disks,
+      uptimeSec: args.uptimeSec ?? existing?.uptimeSec,
+      usage: args.usage ?? existing?.usage,
+      battery: args.battery ?? existing?.battery,
+      gpu: args.gpu ?? existing?.gpu,
+      pi: args.docker ? { docker: args.docker } : existing?.pi,
     };
-    const existing = await ctx.db
-      .query("latest")
-      .withIndex("by_device", (q) => q.eq("deviceId", device._id))
-      .unique();
     if (existing) {
       await ctx.db.replace(existing._id, row);
     } else {

@@ -36,16 +36,31 @@ export const overview = query({
           .unique(),
       ),
     );
-    const out = devices.map((d, i) => ({
-      id: d._id,
-      name: d.name,
-      lastSeenAt: d.lastSeenAt,
-      online: now - d.lastSeenAt < OFFLINE_AFTER_MS,
-      agentVersion: d.agentVersion ?? null,
-      capabilities: d.capabilities ?? null,
-      updateAvailable: isOutdated(d.agentVersion),
-      latest: latestList[i] ?? null,
-    }));
+    const out = devices.map((d, i) => {
+      let os = d.os;
+      if (!os) {
+        if (d.capabilities?.windowsMode) {
+          os = "windows";
+        } else if (d.capabilities?.isPi) {
+          os = "pi";
+        } else {
+          os = "linux";
+        }
+      }
+      const latest = latestList[i] ?? null;
+      const isOnline = (now - d.lastSeenAt < OFFLINE_AFTER_MS) || (latest !== null && (now - latest.ts < 45_000));
+      return {
+        id: d._id,
+        name: d.name,
+        os,
+        lastSeenAt: d.lastSeenAt,
+        online: Boolean(isOnline),
+        agentVersion: d.agentVersion ?? null,
+        capabilities: d.capabilities ?? null,
+        updateAvailable: isOutdated(d.agentVersion),
+        latest,
+      };
+    });
     return { now, latestAgentVersion: LATEST_AGENT_VERSION, devices: out };
   },
 });
@@ -187,8 +202,9 @@ export const confirmPairing = mutation({
       }
     }
     let deviceId;
+    const os = r.os ?? "windows";
     if (existing) {
-      await ctx.db.patch(existing._id, { userId: user._id, isFake: false });
+      await ctx.db.patch(existing._id, { userId: user._id, isFake: false, os });
       deviceId = existing._id;
     } else {
       deviceId = await ctx.db.insert("devices", {
@@ -197,9 +213,10 @@ export const confirmPairing = mutation({
         secretHash: r.secretHash,
         lastSeenAt: now,
         isFake: false,
+        os,
       });
     }
     await ctx.db.patch(r._id, { status: "confirmed", deviceId });
-    return { deviceId, name: r.name };
+    return { deviceId, name: r.name, os };
   },
 });

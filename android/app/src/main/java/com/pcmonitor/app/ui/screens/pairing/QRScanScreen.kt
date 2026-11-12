@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -132,7 +133,7 @@ fun QRScanScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepNavy)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         RetroTopBar(
             title = "Scan QR Code",
@@ -152,7 +153,7 @@ fun QRScanScreen(
                     fontFamily = ReadableFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = TextWhite,
+                    color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center
                 )
 

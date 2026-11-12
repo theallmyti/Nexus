@@ -124,6 +124,37 @@ test("pushLatest updates the latest row and writes no history", async () => {
   expect(await t.run((ctx) => ctx.db.query("summaries").collect())).toHaveLength(0);
 });
 
+test("pushLatest preserves existing gpu and battery when omitted on subsequent push", async () => {
+  const { t } = await setup();
+  const gpu = { temp: 45, util: 10, vramUsed: 500, vramTotal: 4096, powerW: 15, clock: 500 };
+  const battery = { pct: 85, charging: true, healthPct: 98, rateW: 25 };
+  await t.mutation(api.agent.pushLatest, {
+    secretHash: HASH,
+    ts: Date.now(),
+    cpuUtil: 10,
+    ramUsedPct: 30,
+    gpu,
+    battery,
+  });
+
+  let [row] = await t.run((ctx) => ctx.db.query("latest").collect());
+  expect(row.gpu).toEqual(gpu);
+  expect(row.battery).toEqual(battery);
+
+  // Subsequent tick without GPU or battery must not overwrite/clear them
+  await t.mutation(api.agent.pushLatest, {
+    secretHash: HASH,
+    ts: Date.now(),
+    cpuUtil: 15,
+    ramUsedPct: 32,
+  });
+
+  [row] = await t.run((ctx) => ctx.db.query("latest").collect());
+  expect(row.cpu.util).toBe(15);
+  expect(row.gpu).toEqual(gpu);
+  expect(row.battery).toEqual(battery);
+});
+
 test("hello stores capabilities and agent version", async () => {
   const { t, deviceId } = await setup();
   const caps = {

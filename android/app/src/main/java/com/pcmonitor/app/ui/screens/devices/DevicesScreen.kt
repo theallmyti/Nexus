@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -85,13 +86,13 @@ fun DevicesScreen(
             }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = DeepNavy
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(DeepNavy)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             RetroTopBar(
                 title = "Devices (${state.devices.size})"
@@ -121,12 +122,12 @@ fun DevicesScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = DarkNavySurface,
-                        unfocusedContainerColor = DarkNavySurface,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         focusedBorderColor = ArcadeYellow,
-                        unfocusedBorderColor = PixelBorderColor,
-                        focusedTextColor = TextWhite,
-                        unfocusedTextColor = TextWhite
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                     ),
                     singleLine = true
                 )
@@ -144,10 +145,10 @@ fun DevicesScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) ArcadeYellow else Color(0xFF162640))
+                                .background(if (isSelected) ArcadeYellow else MaterialTheme.colorScheme.surfaceVariant)
                                 .border(
                                     1.5.dp,
-                                    if (isSelected) ArcadeYellowDark else PixelBorderColor,
+                                    if (isSelected) ArcadeYellowDark else MaterialTheme.colorScheme.outlineVariant,
                                     RoundedCornerShape(6.dp)
                                 )
                                 .clickable { viewModel.onFilterStatusChanged(status) }
@@ -165,7 +166,7 @@ fun DevicesScreen(
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
-                                color = if (isSelected) DeepNavy else Color(0xFFCBD5E1)
+                                color = if (isSelected) DeepNavy else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

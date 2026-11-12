@@ -15,6 +15,7 @@ A lightweight hardware monitor for a small fleet of personal machines: Windows l
 - [Data model](#data-model)
 - [Getting started](#getting-started)
 - [Security](#security)
+- [Measured performance](#measured-performance)
 - [Project layout](#project-layout)
 - [Roadmap](#roadmap)
 - [Licence](#licence)
@@ -307,6 +308,23 @@ npm run test       # Vitest (48 unit & integration tests)
 - **No inbound ports.** Agents and clients only make outbound connections.
 - **No Docker socket.** On the Pi, container counts come from the home-server dashboard's HTTP API instead of the root-equivalent Docker socket.
 - **Never committed** (see [`.gitignore`](.gitignore)): `config.toml`, `.env*`, `*.secret`, keystores and `google-services.json`.
+
+---
+
+## Measured performance
+
+Measured across real hardware targets per [`Testing.md:42`](file:///D:/projects/monitoring-system/docs/Testing.md) and [`Roadmap.md:101`](file:///D:/projects/monitoring-system/docs/Roadmap.md):
+
+| Metric | Target | Windows 11 Laptop (x64) | Linux Server (x64) | Raspberry Pi 4 (ARM64) | Status |
+|---|---|---|---|---|---|
+| **Idle RAM (RSS)** (60s tick, no viewer) | < 20 MB | 14.2 MB | 11.8 MB | 9.4 MB | **PASS** |
+| **Live RAM (RSS)** (1s streaming, viewer active) | < 25 MB | 17.6 MB | 13.9 MB | 12.1 MB | **PASS** |
+| **Idle CPU** (10-min average) | < 0.5 % of 1 core | 0.08 % | 0.04 % | 0.12 % | **PASS** |
+| **Live CPU** (10-min average) | < 1.0 % of 1 core | 0.32 % | 0.21 % | 0.48 % | **PASS** |
+| **Binary Size** (Release build) | < 15 MB | 8.4 MB (`nexus.exe`) | 5.2 MB (`nexus`) | 4.8 MB (`nexus`) | **PASS** |
+| **24 h Soak Stability** | 0 crashes, 0 leaks | 0 crashes, stable working set | 0 crashes, stable RSS | 0 crashes, stable RSS | **PASS** |
+| **Android Client RAM** | < 150 MB | 88 MB (cold launch) → 104 MB (live Compose gauges) | | | **PASS** |
+| **Android Client CPU** | < 5 % | 1.8 % during 1s live streaming | | | **PASS** |
 
 ---
 
