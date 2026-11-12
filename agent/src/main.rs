@@ -654,6 +654,7 @@ fn main() {
         Some("pair") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             let mut skip_if_paired = false;
+            #[cfg(windows)]
             let mut use_gui = false;
             let mut config_arg: Option<String> = None;
             let mut ui_dir: Option<PathBuf> = None;
@@ -662,7 +663,14 @@ fn main() {
             while let Some(arg) = iter.next() {
                 match arg.as_str() {
                     "--skip-if-paired" => skip_if_paired = true,
+                    #[cfg(windows)]
                     "--gui" => use_gui = true,
+                    #[cfg(not(windows))]
+                    "--gui" => {
+                        println!(
+                            "Note: GUI pairing window is for Windows. Running in terminal mode."
+                        );
+                    }
                     "--ui" => {
                         if let Some(dir) = iter.next() {
                             ui_dir = Some(PathBuf::from(dir));
