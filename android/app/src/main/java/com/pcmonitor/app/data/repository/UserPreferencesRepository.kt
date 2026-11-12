@@ -102,7 +102,9 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[IS_LOGGED_IN] ?: false
+        val loggedIn = prefs[IS_LOGGED_IN] ?: false
+        val token = getSessionToken()
+        loggedIn && !token.isNullOrBlank()
     }
 
     val userName: Flow<String> = context.dataStore.data.map { prefs ->

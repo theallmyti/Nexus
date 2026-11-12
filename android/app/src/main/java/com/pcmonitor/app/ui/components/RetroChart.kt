@@ -157,19 +157,45 @@ fun RetroSparkline(
     lineColor: Color = PixelGreen,
     strokeWidth: Dp = 2.dp
 ) {
-    if (dataPoints.size < 2) return
+    if (dataPoints.isEmpty()) return
 
     Canvas(modifier = modifier) {
         val width = size.width
         val height = size.height
 
+        if (dataPoints.size == 1) {
+            val y = height / 2f
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = strokeWidth.toPx()
+            )
+            return@Canvas
+        }
+
         val min = dataPoints.minOrNull() ?: 0f
         val max = dataPoints.maxOrNull() ?: 100f
-        val range = if (max - min > 0f) max - min else 1f
+        val isFlat = (max - min) <= 0.01f
+
+        if (isFlat) {
+            val y = height / 2f
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = strokeWidth.toPx()
+            )
+            return@Canvas
+        }
+
+        val range = max - min
         val stepX = width / (dataPoints.size - 1)
+        val padY = strokeWidth.toPx() / 2f
+        val usableHeight = (height - strokeWidth.toPx()).coerceAtLeast(1f)
 
         val path = Path()
-        val startY = height - ((dataPoints[0] - min) / range) * height
+        val startY = padY + (1f - (dataPoints[0] - min) / range) * usableHeight
         path.moveTo(0f, startY)
 
         var prevX = 0f
@@ -177,7 +203,7 @@ fun RetroSparkline(
 
         for (i in 1 until dataPoints.size) {
             val currX = i * stepX
-            val currY = height - ((dataPoints[i] - min) / range) * height
+            val currY = padY + (1f - (dataPoints[i] - min) / range) * usableHeight
             val midX = prevX + (currX - prevX) / 2f
 
             path.lineTo(midX, prevY)

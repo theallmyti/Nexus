@@ -2,8 +2,11 @@
 agent/target/
 convex/node_modules/
 android/build/
+android/app/build/
 android/.gradle/
 android/.idea/
+android/.kotlin/
+android/local.properties
 *.apk
 *.aab
 

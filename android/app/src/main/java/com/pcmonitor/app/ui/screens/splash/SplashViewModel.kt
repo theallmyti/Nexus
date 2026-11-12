@@ -34,10 +34,15 @@ class SplashViewModel(
             delay(2200L)
             val onboardingCompleted = preferencesRepository.onboardingCompleted.first()
             val isLoggedIn = preferencesRepository.isLoggedIn.first()
+            val sessionToken = preferencesRepository.getSessionToken()
+
+            if (isLoggedIn && sessionToken.isNullOrBlank()) {
+                preferencesRepository.setLoggedIn(false)
+            }
 
             _destination.value = when {
                 !onboardingCompleted -> SplashDestination.Onboarding
-                !isLoggedIn -> SplashDestination.Login
+                !isLoggedIn || sessionToken.isNullOrBlank() -> SplashDestination.Login
                 else -> SplashDestination.Home
             }
         }

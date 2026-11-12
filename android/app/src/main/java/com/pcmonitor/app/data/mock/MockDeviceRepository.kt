@@ -647,11 +647,13 @@ class MockDeviceRepository(
 
         // 4. Battery Telemetry
         val battery = if (batteryObj != null) {
+            val rawPct = batteryObj.optDouble("pct", 0.0)
+            val rawHealth = batteryObj.optDouble("healthPct", 100.0)
             BatteryStats(
-                percentage = batteryObj.optDouble("pct", 0.0).toInt(),
+                percentage = kotlin.math.round(rawPct).toInt().coerceIn(0, 100),
                 isCharging = batteryObj.optBoolean("charging", false),
                 health = batteryObj.optString("health", "Normal"),
-                healthPercent = batteryObj.optDouble("healthPct", 0.0).toInt(),
+                healthPercent = kotlin.math.round(rawHealth).toInt().coerceIn(0, 100),
                 chargeCycles = batteryObj.optInt("cycles", 0),
                 powerRateWatts = batteryObj.optDouble("rateW", 0.0).toFloat()
             )

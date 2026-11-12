@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -461,12 +462,22 @@ private fun OverviewSection(
     val stats = device.hardwareStats
     val isOnline = device.isOnline
 
+    var cpuHistory by remember(device.id) { mutableStateOf<List<Float>>(emptyList()) }
+    var gpuHistory by remember(device.id) { mutableStateOf<List<Float>>(emptyList()) }
+
     // 1. CPU Temperature Card (Cream card with brown border & green sparkline)
     val cpuTemp = stats.cpu.averageTemperature
     val cpuStr = if (isOnline && cpuTemp > 0f) {
         if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${cpuTemp.toInt()}°C (avg)"
     } else "--"
-    val cpuSparklineData = if (isOnline && cpuTemp > 0f) stats.cpu.coreTemperatures else emptyList()
+
+    LaunchedEffect(cpuTemp, isOnline) {
+        if (isOnline && cpuTemp > 0f) {
+            cpuHistory = if (cpuHistory.isEmpty()) listOf(cpuTemp) else (cpuHistory + cpuTemp).takeLast(20)
+        }
+    }
+
+    val cpuSparklineData = if (cpuHistory.isNotEmpty()) cpuHistory else if (isOnline && cpuTemp > 0f) listOf(cpuTemp) else emptyList()
     CreamMetricCard(
         icon = Icons.Default.Thermostat,
         title = "CPU Temperature",
@@ -482,7 +493,14 @@ private fun OverviewSection(
         val gpuStr = if (isOnline && gpuTemp > 0f) {
             if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${gpuTemp.toInt()}°C (avg)"
         } else "--"
-        val gpuSparklineData = emptyList<Float>()
+
+        LaunchedEffect(gpuTemp, isOnline) {
+            if (isOnline && gpuTemp > 0f) {
+                gpuHistory = if (gpuHistory.isEmpty()) listOf(gpuTemp) else (gpuHistory + gpuTemp).takeLast(20)
+            }
+        }
+
+        val gpuSparklineData = if (gpuHistory.isNotEmpty()) gpuHistory else if (isOnline && gpuTemp > 0f) listOf(gpuTemp) else emptyList()
         CreamMetricCard(
             icon = Icons.Default.Speed,
             title = "GPU Temperature",
