@@ -183,4 +183,13 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_token", ["fcmToken"]),
+
+  appUpdates: defineTable({
+    versionCode: v.number(),
+    versionName: v.string(),
+    storageId: v.id("_storage"),
+    releaseNotes: v.string(),
+    isMandatory: v.boolean(),
+    uploadedAt: v.number(),
+  }).index("by_versionCode", ["versionCode"]),
 });

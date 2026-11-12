@@ -1,4 +1,4 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Agent versions the backend supports (docs/Development.md §3).
@@ -67,9 +67,66 @@ export const LATEST_APP_VERSION_NAME = "1.0.1";
 export const DEFAULT_APP_DOWNLOAD_URL = "https://github.com/theallmyti/Nexus/releases/latest/download/app-debug.apk";
 export const DEFAULT_APP_RELEASE_NOTES = "Uniform metric containers, custom display name, accurate battery AC charging & high-contrast light mode.";
 
+export const generateAppUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const registerAppUpdate = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    versionCode: v.number(),
+    versionName: v.string(),
+    releaseNotes: v.string(),
+    isMandatory: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("appUpdates")
+      .withIndex("by_versionCode", (q) => q.eq("versionCode", args.versionCode))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        storageId: args.storageId,
+        versionName: args.versionName,
+        releaseNotes: args.releaseNotes,
+        isMandatory: args.isMandatory ?? false,
+        uploadedAt: Date.now(),
+      });
+      return existing._id;
+    }
+    return await ctx.db.insert("appUpdates", {
+      versionCode: args.versionCode,
+      versionName: args.versionName,
+      storageId: args.storageId,
+      releaseNotes: args.releaseNotes,
+      isMandatory: args.isMandatory ?? false,
+      uploadedAt: Date.now(),
+    });
+  },
+});
+
 export const checkAppUpdate = query({
   args: { currentVersionCode: v.number() },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    const allUpdates = await ctx.db.query("appUpdates").order("desc").collect();
+    const latest = allUpdates.sort((a, b) => b.versionCode - a.versionCode)[0];
+
+    if (latest) {
+      const isNewer = latest.versionCode > args.currentVersionCode;
+      const downloadUrl = (await ctx.storage.getUrl(latest.storageId)) ?? DEFAULT_APP_DOWNLOAD_URL;
+      return {
+        updateAvailable: isNewer,
+        latestVersionCode: latest.versionCode,
+        latestVersionName: latest.versionName,
+        downloadUrl,
+        releaseNotes: latest.releaseNotes,
+        isMandatory: latest.isMandatory,
+      };
+    }
+
     return {
       updateAvailable: args.currentVersionCode < LATEST_APP_VERSION_CODE,
       latestVersionCode: LATEST_APP_VERSION_CODE,
