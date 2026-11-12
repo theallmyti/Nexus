@@ -7,6 +7,7 @@ import com.pcmonitor.app.data.model.BootEvent
 import com.pcmonitor.app.data.model.BootEventType
 import com.pcmonitor.app.data.model.CpuStats
 import com.pcmonitor.app.data.model.Device
+import com.pcmonitor.app.data.model.DiskStats
 import com.pcmonitor.app.data.model.DeviceType
 import com.pcmonitor.app.data.model.FanStats
 import com.pcmonitor.app.data.model.GpuStats
@@ -235,7 +236,7 @@ class MockDeviceRepository(
                         parseConvexSnapshot(latestObj)
                     } else null
 
-                    val stats = if (parsedStats != null) {
+                    val baseStats = if (parsedStats != null) {
                         if (existing != null) {
                             parsedStats.copy(
                                 gpu = parsedStats.gpu ?: existing.hardwareStats.gpu,
@@ -250,6 +251,10 @@ class MockDeviceRepository(
                     } else {
                         createEmptyHardwareStats()
                     }
+                    // Drives are known from registration even before any live data.
+                    val stats = if (baseStats.disks.isEmpty()) {
+                        baseStats.copy(disks = parseDisks(caps?.optJSONArray("drives")))
+                    } else baseStats
 
                     newDevices.add(
                         Device(
@@ -517,6 +522,7 @@ class MockDeviceRepository(
                             liveStats.copy(
                                 gpu = liveStats.gpu ?: device.hardwareStats.gpu,
                                 battery = liveStats.battery ?: device.hardwareStats.battery,
+                                disks = liveStats.disks.ifEmpty { device.hardwareStats.disks },
                                 usage = if (liveStats.usage.uptimeSeconds > 0) liveStats.usage else device.hardwareStats.usage
                             )
                         } else if (online) {
@@ -731,8 +737,24 @@ class MockDeviceRepository(
             ram = ram,
             battery = battery,
             fans = fans,
-            usage = usage
+            usage = usage,
+            disks = parseDisks(value.optJSONArray("disks"))
         )
+    }
+
+    // [{name, totalGB, freeGB?}] from latest.disks or capabilities.drives.
+    private fun parseDisks(arr: JSONArray?): List<DiskStats> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val d = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = d.optString("name")
+            if (name.isBlank()) return@mapNotNull null
+            DiskStats(
+                name = name,
+                totalGb = d.optDouble("totalGB", 0.0),
+                freeGb = if (d.has("freeGB")) d.optDouble("freeGB") else null
+            )
+        }
     }
 
     override suspend fun stopMockSimulation() {

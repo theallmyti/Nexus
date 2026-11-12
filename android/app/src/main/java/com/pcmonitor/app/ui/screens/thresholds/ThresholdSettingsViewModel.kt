@@ -2,12 +2,14 @@ package com.pcmonitor.app.ui.screens.thresholds
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pcmonitor.app.data.mock.MockDeviceRepository
 import com.pcmonitor.app.data.model.Device
+import com.pcmonitor.app.data.model.DiskStats
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,6 +39,24 @@ class ThresholdSettingsViewModel(
 
     var saveFeedback by mutableStateOf<String?>(null)
 
+    // Per Drive Settings (one device): drives with their own limit, as saved on the server, and
+    // the edits not saved yet. A drive missing from the map uses the device's disk default.
+    val driveLimits = mutableStateMapOf<String, Float>()
+    private val savedDriveLimits = mutableMapOf<String, Float>()
+    var expandedDrive by mutableStateOf<String?>(null)
+
+    /** The selected device's drives (empty for the account-wide scope). */
+    fun drivesForSelection(): List<DiskStats> =
+        devices.value.find { it.id == selectedDeviceId }?.hardwareStats?.disks.orEmpty()
+
+    fun setDriveLimit(drive: String, pct: Float) {
+        driveLimits[drive] = pct
+    }
+
+    fun useDefaultForDrive(drive: String) {
+        driveLimits.remove(drive)
+    }
+
     init {
         loadThresholdsForSelection(selectedDeviceId)
     }
@@ -44,10 +64,13 @@ class ThresholdSettingsViewModel(
     fun selectDevice(deviceId: String?) {
         selectedDeviceId = deviceId
         saveFeedback = null
+        expandedDrive = null
         loadThresholdsForSelection(deviceId)
     }
 
     private fun loadThresholdsForSelection(deviceId: String?) {
+        driveLimits.clear()
+        savedDriveLimits.clear()
         viewModelScope.launch {
             if (deviceId == null) {
                 cpuThreshold = preferencesRepository.cpuThreshold.first()
@@ -70,7 +93,15 @@ class ThresholdSettingsViewModel(
                 server.cpu?.let { cpuThreshold = it }
                 server.gpu?.let { gpuThreshold = it }
                 server.ram?.let { ramThreshold = it }
+                server.disk?.let { diskThreshold = it }
                 if (deviceId != null) isCustomForSelectedDevice = server.isCustom
+            }
+            if (deviceId != null) {
+                preferencesRepository.fetchDiskThresholds(deviceId)?.let { limits ->
+                    if (selectedDeviceId != deviceId) return@let
+                    savedDriveLimits.putAll(limits)
+                    driveLimits.putAll(limits)
+                }
             }
         }
     }
@@ -95,8 +126,19 @@ class ThresholdSettingsViewModel(
                     disk = diskThreshold
                 ).also { isCustomForSelectedDevice = true }
             }
+            // Per Drive Settings: send only the drives whose limit changed (set or back to default).
+            val drivesSynced = if (devId == null) true else {
+                val changed = (driveLimits.keys + savedDriveLimits.keys).filter { driveLimits[it] != savedDriveLimits[it] }
+                changed.map { drive ->
+                    val ok = preferencesRepository.saveDiskThreshold(devId, drive, driveLimits[drive])
+                    if (ok) {
+                        driveLimits[drive]?.let { savedDriveLimits[drive] = it } ?: savedDriveLimits.remove(drive)
+                    }
+                    ok
+                }.all { it }
+            }
             saveFeedback = when {
-                !synced -> "Saved on this phone, but couldn't reach Nexus. Alerts still use the old values; try again when online."
+                !synced || !drivesSynced -> "Saved on this phone, but couldn't reach Nexus. Alerts still use the old values; try again when online."
                 devId == null -> "Global thresholds saved & synced!"
                 else -> "Device thresholds saved & synced!"
             }

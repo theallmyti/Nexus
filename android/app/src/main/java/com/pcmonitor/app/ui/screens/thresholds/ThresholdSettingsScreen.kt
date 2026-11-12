@@ -264,6 +264,68 @@ fun ThresholdSettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // Section: Per Drive Settings (the selected computer's real drives)
+            Text(
+                text = "Per Drive Settings",
+                fontFamily = PixelFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = ArcadeYellow
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val drives = viewModel.drivesForSelection()
+            when {
+                viewModel.selectedDeviceId == null -> Text(
+                    text = "Pick a computer above to set a limit for each of its drives.",
+                    fontFamily = ReadableFontFamily,
+                    fontSize = 12.sp,
+                    color = CreamBorder
+                )
+                drives.isEmpty() -> Text(
+                    text = "No drives reported yet. They appear once the computer's agent has connected.",
+                    fontFamily = ReadableFontFamily,
+                    fontSize = 12.sp,
+                    color = CreamBorder
+                )
+                else -> drives.forEach { drive ->
+                    val custom = viewModel.driveLimits[drive.name]
+                    val limitText = custom?.let { "< ${it.toInt()}% free" }
+                        ?: "Default (< ${viewModel.diskThreshold.toInt()}%)"
+                    val freeText = drive.freePercent?.let { " · ${it.toInt()}% free now" } ?: ""
+                    DriveSettingCard(
+                        driveLetter = driveLabel(drive.name),
+                        value = limitText + freeText,
+                        expanded = viewModel.expandedDrive == drive.name,
+                        onClick = {
+                            viewModel.expandedDrive = if (viewModel.expandedDrive == drive.name) null else drive.name
+                        }
+                    ) {
+                        ThresholdSliderItem(
+                            icon = Icons.Default.Storage,
+                            label = drive.name,
+                            value = "< ${(custom ?: viewModel.diskThreshold).toInt()}% free",
+                            current = custom ?: viewModel.diskThreshold,
+                            range = 5f..50f,
+                            onValueChange = { viewModel.setDriveLimit(drive.name, it) }
+                        )
+                        if (custom != null) {
+                            Text(
+                                text = "Use default",
+                                fontFamily = PixelFontFamily,
+                                fontSize = 11.sp,
+                                color = CreamBorder,
+                                modifier = Modifier
+                                    .clickable { viewModel.useDefaultForDrive(drive.name) }
+                                    .padding(vertical = 6.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
             if (viewModel.saveFeedback != null) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
@@ -403,3 +465,69 @@ private fun ThresholdSliderItem(
     }
 }
 
+// "C:\\" -> "C:", "/" -> "/", "/home" -> "/home" (short label for the drive badge).
+private fun driveLabel(name: String): String =
+    if (name.length >= 2 && name[1] == ':') name.substring(0, 2) else name.take(6)
+
+@Composable
+private fun DriveSettingCard(
+    driveLetter: String,
+    value: String,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(CreamBackground)
+            .border(1.dp, CreamBorder, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .size(height = 28.dp, width = 44.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFE8DFC8)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = driveLetter,
+                            fontFamily = PixelFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = CreamText,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = value,
+                        fontFamily = PixelFontFamily,
+                        fontSize = 11.sp,
+                        color = CreamText
+                    )
+                }
+                Text(
+                    text = if (expanded) "⌄" else "›",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CreamBorder
+                )
+            }
+            if (expanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                content()
+            }
+        }
+    }
+}

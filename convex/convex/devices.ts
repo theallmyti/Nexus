@@ -360,9 +360,13 @@ export const updateThresholds = mutation({
     cpuTempC: v.optional(v.number()),
     gpuTempC: v.optional(v.number()),
     ramPct: v.optional(v.number()),
+    diskFreePct: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
+    if (args.diskFreePct !== undefined && !(args.diskFreePct >= 1 && args.diskFreePct <= 90)) {
+      throw new ConvexError("disk threshold out of range");
+    }
 
     if (args.deviceId) {
       const dev = await ctx.db.get(args.deviceId);
@@ -388,6 +392,7 @@ export const updateThresholds = mutation({
     if (args.cpuTempC !== undefined) patch.cpuTempC = args.cpuTempC;
     if (args.gpuTempC !== undefined) patch.gpuTempC = args.gpuTempC;
     if (args.ramPct !== undefined) patch.ramPct = args.ramPct;
+    if (args.diskFreePct !== undefined) patch.diskFreePct = args.diskFreePct;
 
     if (existing) {
       await ctx.db.patch(existing._id, patch);
@@ -455,6 +460,57 @@ export const resetDeviceThresholds = mutation({
       .first();
     if (custom) {
       await ctx.db.delete(custom._id);
+    }
+    return { success: true };
+  },
+});
+
+// 11c. Per-drive disk limits for one device (Threshold settings → Per Drive Settings).
+export const getDiskThresholds = query({
+  args: { token: v.string(), deviceId: v.id("devices") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const dev = await ctx.db.get(args.deviceId);
+    if (!dev || dev.userId !== user._id) {
+      throw new ConvexError("Unauthorized: device does not belong to session");
+    }
+    const rows = await ctx.db
+      .query("diskThresholds")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .collect();
+    return rows.map((r) => ({ drive: r.drive, minFreePct: r.minFreePct ?? null }));
+  },
+});
+
+// Set one drive's limit (% free); minFreePct null removes it, so the drive uses the default again.
+export const setDiskThreshold = mutation({
+  args: {
+    token: v.string(),
+    deviceId: v.id("devices"),
+    drive: v.string(),
+    minFreePct: v.union(v.number(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserAndTouch(ctx, args.token);
+    const dev = await ctx.db.get(args.deviceId);
+    if (!dev || dev.userId !== user._id) {
+      throw new ConvexError("Unauthorized: device does not belong to session");
+    }
+    const drive = args.drive.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 64);
+    if (!drive) throw new ConvexError("invalid drive");
+    if (args.minFreePct !== null && !(args.minFreePct >= 1 && args.minFreePct <= 90)) {
+      throw new ConvexError("disk threshold out of range");
+    }
+    const existing = await ctx.db
+      .query("diskThresholds")
+      .withIndex("by_device_drive", (q) => q.eq("deviceId", args.deviceId).eq("drive", drive))
+      .first();
+    if (args.minFreePct === null) {
+      if (existing) await ctx.db.delete(existing._id);
+    } else if (existing) {
+      await ctx.db.patch(existing._id, { minFreePct: args.minFreePct });
+    } else {
+      await ctx.db.insert("diskThresholds", { deviceId: args.deviceId, drive, minFreePct: args.minFreePct });
     }
     return { success: true };
   },

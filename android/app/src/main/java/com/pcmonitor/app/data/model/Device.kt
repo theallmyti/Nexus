@@ -26,8 +26,18 @@ data class HardwareStats(
     val ram: RamStats = RamStats(),
     val battery: BatteryStats? = null,
     val fans: FanStats = FanStats(),
-    val usage: UsageStats = UsageStats()
+    val usage: UsageStats = UsageStats(),
+    // Fixed drives from the agent (latest.disks, or capabilities.drives before any live data).
+    val disks: List<DiskStats> = emptyList()
 )
+
+data class DiskStats(
+    val name: String,          // "C:\\" on Windows, "/" or "/home" on Linux
+    val totalGb: Double,
+    val freeGb: Double? = null // null until the agent has sent live data
+) {
+    val freePercent: Float? get() = freeGb?.let { if (totalGb > 0) (it / totalGb * 100).toFloat() else null }
+}
 
 data class FanStats(
     val cpuFanRpm: Int = 0,

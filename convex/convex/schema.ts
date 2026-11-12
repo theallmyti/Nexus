@@ -144,6 +144,8 @@ export default defineSchema({
     cpuTempC: v.optional(v.number()),
     gpuTempC: v.optional(v.number()),
     ramPct: v.optional(v.number()),
+    // Alert when a drive has less than this % free (default for drives without their own row).
+    diskFreePct: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_device", ["deviceId"])
@@ -154,7 +156,9 @@ export default defineSchema({
     drive: v.string(),
     minFreePct: v.optional(v.number()),
     minFreeGB: v.optional(v.number()),
-  }).index("by_device", ["deviceId"]),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_device_drive", ["deviceId", "drive"]),
 
   alerts: defineTable({
     userId: v.id("users"),
@@ -169,6 +173,8 @@ export default defineSchema({
     ),
     value: v.optional(v.number()),
     threshold: v.optional(v.number()),
+    // Disk alerts: which drive (e.g. "C:\\" or "/").
+    drive: v.optional(v.string()),
     createdAt: v.number(),
     pushed: v.boolean(),
   })

@@ -120,3 +120,45 @@ test("the daily cleanup deletes alerts older than 7 days", async () => {
   expect(res.alerts).toBe(3);
   expect(await t.run((ctx) => ctx.db.query("alerts").collect())).toHaveLength(0);
 });
+
+const withDisks = (disks: { name: string; freeGB: number; freePct: number }[]) => ({ ...CALM, disks });
+
+test("disk alerts: one per low drive, using per-drive -> device -> account -> 10% limits", async () => {
+  const t = convexTest(schema, modules);
+  const { token, deviceId } = await userWithDevice(t);
+
+  // Default 10%: only D: (8% free) is low.
+  await push(t, withDisks([{ name: "C:\\", freeGB: 100, freePct: 40 }, { name: "D:\\", freeGB: 8, freePct: 8 }]));
+  let alerts = await t.query(api.devices.getMyAlerts, { token });
+  expect(alerts.map((a) => [a.type, a.drive, a.threshold])).toEqual([["disk", "D:\\", 10]]);
+
+  // C: gets its own 50% limit; the account default drops to 5%, so D: (8%) is fine now.
+  await t.mutation(api.devices.setDiskThreshold, { token, deviceId, drive: "C:\\", minFreePct: 50 });
+  await t.mutation(api.devices.updateThresholds, { token, diskFreePct: 5 });
+  expect(await t.query(api.devices.getDiskThresholds, { token, deviceId })).toEqual([{ drive: "C:\\", minFreePct: 50 }]);
+  vi.advanceTimersByTime(60_000);
+  await push(t, withDisks([{ name: "C:\\", freeGB: 100, freePct: 40 }, { name: "D:\\", freeGB: 8, freePct: 8 }]));
+  alerts = await t.query(api.devices.getMyAlerts, { token });
+  expect(alerts.filter((a) => a.drive === "C:\\").map((a) => a.threshold)).toEqual([50]);
+
+  // Same drive again within 15 minutes: no repeat. Removing C:'s own limit falls back to 5%.
+  vi.advanceTimersByTime(60_000);
+  await push(t, withDisks([{ name: "C:\\", freeGB: 100, freePct: 40 }]));
+  expect((await t.query(api.devices.getMyAlerts, { token })).length).toBe(2);
+  await t.mutation(api.devices.setDiskThreshold, { token, deviceId, drive: "C:\\", minFreePct: null });
+  expect(await t.query(api.devices.getDiskThresholds, { token, deviceId })).toEqual([]);
+});
+
+test("per-drive limits are owner-only and range-checked", async () => {
+  const t = convexTest(schema, modules);
+  const { token, deviceId } = await userWithDevice(t);
+  const other = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: "x@example.com", password: "password one" });
+  await expect(
+    t.mutation(api.devices.setDiskThreshold, { token: other.token, deviceId, drive: "C:\\", minFreePct: 20 }),
+  ).rejects.toThrow(/Unauthorized/);
+  await expect(t.query(api.devices.getDiskThresholds, { token: other.token, deviceId })).rejects.toThrow(/Unauthorized/);
+  await expect(
+    t.mutation(api.devices.setDiskThreshold, { token, deviceId, drive: "C:\\", minFreePct: 0 }),
+  ).rejects.toThrow(/out of range/);
+  await expect(t.mutation(api.devices.updateThresholds, { token, diskFreePct: 95 })).rejects.toThrow(/out of range/);
+});

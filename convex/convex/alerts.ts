@@ -8,6 +8,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 export const DEFAULT_THRESHOLDS = { cpuTempC: 90, gpuTempC: 85, ramPct: 90 };
+// Alert when a drive has less than this % free (FR-42).
+export const DEFAULT_DISK_FREE_PCT = 10;
 export type Thresholds = typeof DEFAULT_THRESHOLDS;
 
 // FR-48: at most one alert per device and type every 15 minutes.
@@ -27,6 +29,7 @@ export type SummaryReadings = {
   cpuTempMax?: number;
   gpuTempMax?: number;
   gpuUtilAvg?: number;
+  disks?: { name: string; freeGB: number; freePct: number }[];
 };
 
 export async function thresholdsFor(
@@ -47,6 +50,40 @@ export async function thresholdsFor(
     gpuTempC: own?.gpuTempC ?? account?.gpuTempC ?? DEFAULT_THRESHOLDS.gpuTempC,
     ramPct: own?.ramPct ?? account?.ramPct ?? DEFAULT_THRESHOLDS.ramPct,
   };
+}
+
+// Drives below their free-space limit. Limit per drive: its own row (Per Drive Settings), then
+// the device's disk default, then the account's, then DEFAULT_DISK_FREE_PCT.
+export async function diskBreaches(
+  ctx: Pick<QueryCtx, "db">,
+  userId: Id<"users">,
+  deviceId: Id<"devices">,
+  disks: { name: string; freePct: number }[],
+): Promise<{ drive: string; value: number; threshold: number }[]> {
+  if (disks.length === 0) return [];
+  const own = await ctx.db
+    .query("thresholds")
+    .withIndex("by_user_device", (q) => q.eq("userId", userId).eq("deviceId", deviceId))
+    .first();
+  const account = await ctx.db
+    .query("thresholds")
+    .withIndex("by_user_device", (q) => q.eq("userId", userId).eq("deviceId", undefined))
+    .first();
+  const fallback = own?.diskFreePct ?? account?.diskFreePct ?? DEFAULT_DISK_FREE_PCT;
+  const perDrive = new Map(
+    (
+      await ctx.db
+        .query("diskThresholds")
+        .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+        .collect()
+    ).map((r) => [r.drive, r.minFreePct]),
+  );
+  const out: { drive: string; value: number; threshold: number }[] = [];
+  for (const d of disks) {
+    const threshold = perDrive.get(d.name) ?? fallback;
+    if (d.freePct < threshold) out.push({ drive: d.name, value: d.freePct, threshold });
+  }
+  return out;
 }
 
 // Which thresholds this minute crossed. A summary holds both the minute's average and its peak
@@ -77,6 +114,28 @@ export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, 
       type: b.type,
       value: b.value,
       threshold: b.threshold,
+      createdAt: now,
+      pushed: false,
+    });
+    raised++;
+  }
+
+  // Disks: one cooldown per drive.
+  for (const d of await diskBreaches(ctx, userId, device._id, s.disks ?? [])) {
+    const recent = await ctx.db
+      .query("alerts")
+      .withIndex("by_device_type_time", (q) =>
+        q.eq("deviceId", device._id).eq("type", "disk").gt("createdAt", now - ALERT_COOLDOWN_MS),
+      )
+      .collect();
+    if (recent.some((a) => a.drive === d.drive)) continue;
+    await ctx.db.insert("alerts", {
+      userId,
+      deviceId: device._id,
+      type: "disk",
+      value: d.value,
+      threshold: d.threshold,
+      drive: d.drive,
       createdAt: now,
       pushed: false,
     });

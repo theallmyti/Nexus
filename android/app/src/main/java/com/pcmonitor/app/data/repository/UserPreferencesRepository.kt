@@ -193,7 +193,7 @@ class UserPreferencesRepository(private val context: Context) {
             prefs[DISK_THRESHOLD] = disk
         }
         val email = userEmail.first()
-        return email.isNotBlank() && syncThresholdsToConvex(email, cpu, gpu, ram)
+        return email.isNotBlank() && syncThresholdsToConvex(email, cpu, gpu, ram, disk = disk)
     }
 
     fun getDeviceCpuThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
@@ -226,7 +226,7 @@ class UserPreferencesRepository(private val context: Context) {
             prefs[deviceHasCustomKey(deviceId)] = true
         }
         val email = userEmail.first()
-        return email.isNotBlank() && syncThresholdsToConvex(email, cpu, gpu, ram, deviceId = deviceId)
+        return email.isNotBlank() && syncThresholdsToConvex(email, cpu, gpu, ram, deviceId = deviceId, disk = disk)
     }
 
     suspend fun resetDeviceThresholds(deviceId: String): Boolean {
@@ -240,7 +240,9 @@ class UserPreferencesRepository(private val context: Context) {
         return resetDeviceThresholdsInConvex(deviceId)
     }
 
-    suspend fun syncThresholdsToConvex(userEmail: String, cpu: Float, gpu: Float, ram: Float, deviceId: String? = null): Boolean {
+    suspend fun syncThresholdsToConvex(
+        userEmail: String, cpu: Float, gpu: Float, ram: Float, deviceId: String? = null, disk: Float? = null
+    ): Boolean {
         val token = getSessionToken()
         if (token.isNullOrBlank()) return false
         return withContext(Dispatchers.IO) {
@@ -251,6 +253,7 @@ class UserPreferencesRepository(private val context: Context) {
                     put("cpuTempC", cpu.toDouble())
                     put("gpuTempC", gpu.toDouble())
                     put("ramPct", ram.toDouble())
+                    if (disk != null) put("diskFreePct", disk.toDouble())
                     if (!deviceId.isNullOrBlank()) {
                         put("deviceId", deviceId)
                     }
@@ -327,7 +330,7 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun resetThresholds(): Boolean = saveThresholds(90f, 85f, 90f, 10f)
 
     /** Values stored on the server (what alerts use), or null when unavailable. */
-    data class ServerThresholds(val cpu: Float?, val gpu: Float?, val ram: Float?, val isCustom: Boolean)
+    data class ServerThresholds(val cpu: Float?, val gpu: Float?, val ram: Float?, val disk: Float?, val isCustom: Boolean)
 
     suspend fun fetchThresholdsFromConvex(deviceId: String?): ServerThresholds? {
         val token = getSessionToken()
@@ -349,9 +352,67 @@ class UserPreferencesRepository(private val context: Context) {
                 val v = env.optJSONObject("value")
                 if (env.optString("status") != "success" || v == null) return@withContext null
                 fun num(k: String) = if (v.has(k) && !v.isNull(k)) v.getDouble(k).toFloat() else null
-                ServerThresholds(num("cpuTempC"), num("gpuTempC"), num("ramPct"), v.optBoolean("isCustom", false))
+                ServerThresholds(num("cpuTempC"), num("gpuTempC"), num("ramPct"), num("diskFreePct"), v.optBoolean("isCustom", false))
             } catch (e: Exception) {
                 null
+            }
+        }
+    }
+
+    /** Per-drive free-space limits for one device: drive name -> % free. Null when unavailable. */
+    suspend fun fetchDiskThresholds(deviceId: String): Map<String, Float>? {
+        val token = getSessionToken()
+        if (token.isNullOrBlank()) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject().apply {
+                    put("path", "devices:getDiskThresholds")
+                    put("args", JSONObject().apply {
+                        put("token", token)
+                        put("deviceId", deviceId)
+                    })
+                }
+                val req = Request.Builder()
+                    .url("https://tidy-newt-65.convex.cloud/api/query")
+                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                val env = httpClient.newCall(req).execute().use { JSONObject(it.body?.string().orEmpty()) }
+                val arr = env.optJSONArray("value")
+                if (env.optString("status") != "success" || arr == null) return@withContext null
+                buildMap {
+                    for (i in 0 until arr.length()) {
+                        val o = arr.optJSONObject(i) ?: continue
+                        if (!o.isNull("minFreePct")) put(o.optString("drive"), o.getDouble("minFreePct").toFloat())
+                    }
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    /** Sets one drive's limit, or removes it (null) so the drive uses the default again. */
+    suspend fun saveDiskThreshold(deviceId: String, drive: String, minFreePct: Float?): Boolean {
+        val token = getSessionToken()
+        if (token.isNullOrBlank()) return false
+        return withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject().apply {
+                    put("path", "devices:setDiskThreshold")
+                    put("args", JSONObject().apply {
+                        put("token", token)
+                        put("deviceId", deviceId)
+                        put("drive", drive)
+                        put("minFreePct", minFreePct?.toDouble() ?: JSONObject.NULL)
+                    })
+                }
+                val req = Request.Builder()
+                    .url("https://tidy-newt-65.convex.cloud/api/mutation")
+                    .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                isConvexSuccess(req)
+            } catch (e: Exception) {
+                false
             }
         }
     }

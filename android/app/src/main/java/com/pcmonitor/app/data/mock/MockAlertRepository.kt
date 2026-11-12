@@ -177,7 +177,7 @@ class MockAlertRepository(
                     AlertSeverity.WARNING,
                     AlertCategory.DISK_SPACE,
                     "Disk Space Low",
-                    "A drive is down to ${value.toInt()}% free (threshold: ${threshold.toInt()}%)."
+                    "Drive ${obj.optString("drive").ifBlank { "?" }} is down to ${value.toInt()}% free (threshold: ${threshold.toInt()}%)."
                 )
                 "offline" -> Quadruple(
                     AlertSeverity.OFFLINE,
