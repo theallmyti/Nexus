@@ -251,7 +251,7 @@ erDiagram
 Install the agent on your computers and link them to your account:
 
 #### Windows
-1. Run `dist\nexus-setup-0.2.1.exe` (or build from `installer\nexus.iss`).
+1. Run `dist\nexus-setup-0.2.2.exe` (or build from `installer\nexus.iss`).
 2. The setup wizard displays a pairing QR code and 6-character code.
 3. **If you have the Nexus app:** Scan the QR code using Google Lens, your phone camera, or the in-app scanner to pair instantly.
 4. **If you don't have the app yet:** Scanning the QR code automatically opens the download page with a direct link to the latest [Nexus Android APK on GitHub Releases](https://github.com/theallmyti/Nexus/releases/latest). Install the app, sign in, and confirm the code.
@@ -260,10 +260,10 @@ Install the agent on your computers and link them to your account:
 1. Download the universal static installer for your architecture from `dist/`:
    ```sh
    # x86-64:
-   sudo sh nexus-0.2.1-linux-x86_64.run
+   sudo sh nexus-0.2.2-linux-x86_64.run
 
    # ARM64 / Raspberry Pi:
-   sudo sh nexus-0.2.1-linux-aarch64.run
+   sudo sh nexus-0.2.2-linux-aarch64.run
    ```
 2. Scan the terminal QR code with your phone camera or Google Lens to pair, or type the 6-character code into the app.
 3. To uninstall at any time: `sudo sh /opt/nexus/uninstall.sh` (or `sudo sh dist/nexus-uninstall.sh`).
