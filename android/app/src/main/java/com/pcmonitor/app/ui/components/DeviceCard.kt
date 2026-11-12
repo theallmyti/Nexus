@@ -153,14 +153,20 @@ fun DeviceCard(
                         if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F" else "${cpuTemp.toInt()}°C"
                     } else if (stats.cpu.totalUtilization > 0f) {
                         "${stats.cpu.totalUtilization.toInt()}%"
-                    } else "--"
+                    } else "Idle"
                 } else "--"
                 StatMiniBox(value = cpuDisplay, label = "CPU")
 
                 // GPU
                 val gpuDisplay = if (isOnline && stats.gpu != null) {
                     val gpuTemp = stats.gpu.temperature
-                    if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
+                    if (gpuTemp > 0f) {
+                        if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
+                    } else if (stats.gpu.utilization > 0f) {
+                        "${stats.gpu.utilization.toInt()}%"
+                    } else {
+                        "Idle"
+                    }
                 } else "--"
                 StatMiniBox(value = gpuDisplay, label = "GPU")
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface DeviceRepository {
     val devices: StateFlow<List<Device>>
+    fun setActiveDeviceId(deviceId: String?) {}
     fun getDevice(deviceId: String): Flow<Device?>
     suspend fun addDevice(device: Device)
     suspend fun removeDevice(deviceId: String)

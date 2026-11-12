@@ -74,17 +74,24 @@ class MockDeviceRepository(
         Log.i(TAG, "Alert cooldowns reset.")
     }
 
+    private val dnsCache = java.util.concurrent.ConcurrentHashMap<String, List<java.net.InetAddress>>()
+
     private val fallbackDns = object : okhttp3.Dns {
         override fun lookup(hostname: String): List<java.net.InetAddress> {
+            dnsCache[hostname]?.let { return it }
             return try {
-                okhttp3.Dns.SYSTEM.lookup(hostname)
+                val resolved = okhttp3.Dns.SYSTEM.lookup(hostname)
+                dnsCache[hostname] = resolved
+                resolved
             } catch (e: Exception) {
                 if (hostname.contains("convex.cloud")) {
                     Log.i(TAG, "Using fallback IP for $hostname")
-                    listOf(
+                    val fallbacks = listOf(
                         java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 14.toByte(), 131.toByte())),
                         java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 15.toByte(), 131.toByte()))
                     )
+                    dnsCache[hostname] = fallbacks
+                    fallbacks
                 } else {
                     throw e
                 }
@@ -94,9 +101,9 @@ class MockDeviceRepository(
 
     private val httpClient = OkHttpClient.Builder()
         .dns(fallbackDns)
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .writeTimeout(4, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
@@ -215,7 +222,7 @@ class MockDeviceRepository(
                     val latestTs = latestObj?.optLong("ts", 0L) ?: 0L
                     val now = System.currentTimeMillis()
                     val isOnline = item.optBoolean("online", false) ||
-                        (latestTs > 0L && (now - latestTs) < 45000L) ||
+                        (latestTs > 0L && Math.abs(now - latestTs) < 45000L) ||
                         (lastSeen > 0L && (now - lastSeen) < 180000L)
 
                     val existing = _devices.value.find { it.id == id }
@@ -233,7 +240,7 @@ class MockDeviceRepository(
                         } else {
                             parsedStats
                         }
-                    } else if (existing != null && existing.hardwareStats.cpu.totalUtilization > 0f) {
+                    } else if (existing != null) {
                         existing.hardwareStats
                     } else {
                         createEmptyHardwareStats()
@@ -252,7 +259,9 @@ class MockDeviceRepository(
                         )
                     )
                 }
-                _devices.value = newDevices
+                if (newDevices != _devices.value) {
+                    _devices.value = newDevices
+                }
                 if (newDevices.isNotEmpty()) {
                     if (activeDeviceId.isBlank() || newDevices.none { it.id == activeDeviceId }) {
                         activeDeviceId = newDevices[0].id
@@ -264,6 +273,15 @@ class MockDeviceRepository(
             }
         } catch (e: Exception) {
             Log.d(TAG, "Device discovery query failed: ${e.message}")
+        }
+    }
+
+    override fun setActiveDeviceId(deviceId: String?) {
+        val newId = deviceId ?: ""
+        if (activeDeviceId != newId) {
+            activeDeviceId = newId
+            lastViewerPingMs = 0L // Immediately trigger live viewer keepalive for the active device
+            Log.i(TAG, "Active device routed to: $activeDeviceId")
         }
     }
 
@@ -307,7 +325,7 @@ class MockDeviceRepository(
     }
 
     override fun getDevice(deviceId: String): Flow<Device?> {
-        activeDeviceId = deviceId
+        setActiveDeviceId(deviceId)
         return _devices.map { list -> list.find { it.id == deviceId } }
     }
 
@@ -393,8 +411,8 @@ class MockDeviceRepository(
 
                 val now = System.currentTimeMillis()
 
-                // Periodically discover/refresh devices from Convex (every 5s if empty, or every 15s)
-                val interval = if (_devices.value.isEmpty()) 5000L else 15000L
+                // Periodically discover/refresh all fleet devices from Convex (every 3s for real-time fleet sync)
+                val interval = 3000L
                 if (now - lastDevicesFetchMs > interval) {
                     lastDevicesFetchMs = now
                     fetchDevicesFromConvex()
@@ -458,11 +476,13 @@ class MockDeviceRepository(
                                 if (value != null) {
                                     snapshotTs = value.optLong("ts", 0L)
                                     val onlineFlag = value.optBoolean("isOnline", false)
-                                    val ageMs = now - snapshotTs
-                                    if (onlineFlag || (snapshotTs > 0L && ageMs < 45000L)) {
-                                        isDeviceOnline = true
+                                    // Rely primarily on server's synchronized calculation of online status
+                                    isDeviceOnline = if (onlineFlag) {
+                                        true
+                                    } else if (snapshotTs > 0L && Math.abs(now - snapshotTs) < 45000L) {
+                                        true
                                     } else {
-                                        isDeviceOnline = false
+                                        false
                                     }
                                     if (value.has("cpu") || value.has("ram")) {
                                         liveStats = parseConvexSnapshot(value)
@@ -477,13 +497,13 @@ class MockDeviceRepository(
                 }
 
                 // Update device in state:
-                _devices.value = _devices.value.map { device ->
+                val updatedDevices = _devices.value.map { device ->
                     if (device.id == activeDeviceId) {
                         val online = when {
                             isDeviceOnline == true -> true
-                            isDeviceOnline == false -> false
+                            isDeviceOnline == false -> device.lastSeen > 0L && (now - device.lastSeen < 180000L)
                             device.lastSeen > 0L && (now - device.lastSeen < 180000L) -> device.isOnline
-                            else -> false
+                            else -> device.isOnline
                         }
                         val effectiveLastSeen = if (snapshotTs > 0L) snapshotTs else device.lastSeen
                         val stats = if (liveStats != null) {
@@ -492,10 +512,9 @@ class MockDeviceRepository(
                                 battery = liveStats.battery ?: device.hardwareStats.battery,
                                 usage = if (liveStats.usage.uptimeSeconds > 0) liveStats.usage else device.hardwareStats.usage
                             )
-                        } else if (online) {
-                            device.hardwareStats
                         } else {
-                            createEmptyHardwareStats()
+                            // Retain existing hardware specs and telemetry (never wipe to empty)
+                            device.hardwareStats
                         }
                         device.copy(
                             hardwareStats = stats,
@@ -506,13 +525,16 @@ class MockDeviceRepository(
                         device
                     }
                 }
+                if (updatedDevices != _devices.value) {
+                    _devices.value = updatedDevices
+                }
 
-                // Evaluate hardware thresholds in real-time and fire heads-up notifications
+                // Evaluate hardware thresholds in real-time and fire heads-up notifications (using 0ms in-memory cache)
                 if (liveStats != null && context != null && userPreferencesRepository != null) {
                     try {
-                        val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(activeDeviceId).first()
-                        val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(activeDeviceId).first()
-                        val ramLimit = userPreferencesRepository.getDeviceRamThreshold(activeDeviceId).first()
+                        val cpuLimit = userPreferencesRepository.getCachedDeviceCpuThreshold(activeDeviceId)
+                        val gpuLimit = userPreferencesRepository.getCachedDeviceGpuThreshold(activeDeviceId)
+                        val ramLimit = userPreferencesRepository.getCachedDeviceRamThreshold(activeDeviceId)
 
                         val currentDevice = _devices.value.find { it.id == activeDeviceId }
                         val devName = currentDevice?.name ?: "Primary PC"

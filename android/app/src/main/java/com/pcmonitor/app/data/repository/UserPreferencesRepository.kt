@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -22,24 +23,56 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 class UserPreferencesRepository(private val context: Context) {
 
+    private val dnsCache = java.util.concurrent.ConcurrentHashMap<String, List<java.net.InetAddress>>()
+    private val thresholdCache = java.util.concurrent.ConcurrentHashMap<String, Float>()
+    private val prefScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+
     private val httpClient = OkHttpClient.Builder()
         .dns(object : okhttp3.Dns {
             override fun lookup(hostname: String): List<java.net.InetAddress> {
+                dnsCache[hostname]?.let { return it }
                 return try {
-                    okhttp3.Dns.SYSTEM.lookup(hostname)
+                    val resolved = okhttp3.Dns.SYSTEM.lookup(hostname)
+                    dnsCache[hostname] = resolved
+                    resolved
                 } catch (e: Exception) {
                     if (hostname.contains("convex.cloud")) {
-                        listOf(
+                        val fallbacks = listOf(
                             java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 14.toByte(), 131.toByte())),
                             java.net.InetAddress.getByAddress(hostname, byteArrayOf(104.toByte(), 18.toByte(), 15.toByte(), 131.toByte()))
                         )
+                        dnsCache[hostname] = fallbacks
+                        fallbacks
                     } else throw e
                 }
             }
         })
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
         .build()
+
+    init {
+        // Asynchronously keep in-memory threshold cache hot so 1s polling has 0ms disk overhead
+        prefScope.launch {
+            context.dataStore.data.collect { prefs ->
+                prefs[CPU_THRESHOLD]?.let { thresholdCache["cpu_global"] = it }
+                prefs[GPU_THRESHOLD]?.let { thresholdCache["gpu_global"] = it }
+                prefs[RAM_THRESHOLD]?.let { thresholdCache["ram_global"] = it }
+                prefs[DISK_THRESHOLD]?.let { thresholdCache["disk_global"] = it }
+                prefs.asMap().forEach { (key, value) ->
+                    if (value is Float) {
+                        val name = key.name
+                        when {
+                            name.startsWith("cpu_thresh_") -> thresholdCache["cpu_${name.removePrefix("cpu_thresh_")}"] = value
+                            name.startsWith("gpu_thresh_") -> thresholdCache["gpu_${name.removePrefix("gpu_thresh_")}"] = value
+                            name.startsWith("ram_thresh_") -> thresholdCache["ram_${name.removePrefix("ram_thresh_")}"] = value
+                            name.startsWith("disk_thresh_") -> thresholdCache["disk_${name.removePrefix("disk_thresh_")}"] = value
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     private val encryptedPrefs by lazy {
         try {
@@ -185,6 +218,10 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun saveThresholds(cpu: Float, gpu: Float, ram: Float, disk: Float) {
+        thresholdCache["cpu_global"] = cpu
+        thresholdCache["gpu_global"] = gpu
+        thresholdCache["ram_global"] = ram
+        thresholdCache["disk_global"] = disk
         context.dataStore.edit { prefs ->
             prefs[CPU_THRESHOLD] = cpu
             prefs[GPU_THRESHOLD] = gpu
@@ -195,6 +232,23 @@ class UserPreferencesRepository(private val context: Context) {
         if (email.isNotBlank()) {
             syncThresholdsToConvex(email, cpu, gpu, ram)
         }
+    }
+
+    // Instant in-memory non-blocking threshold lookups for 1-second polling loops
+    fun getCachedDeviceCpuThreshold(deviceId: String): Float {
+        return thresholdCache["cpu_$deviceId"] ?: thresholdCache["cpu_global"] ?: 90f
+    }
+
+    fun getCachedDeviceGpuThreshold(deviceId: String): Float {
+        return thresholdCache["gpu_$deviceId"] ?: thresholdCache["gpu_global"] ?: 85f
+    }
+
+    fun getCachedDeviceRamThreshold(deviceId: String): Float {
+        return thresholdCache["ram_$deviceId"] ?: thresholdCache["ram_global"] ?: 90f
+    }
+
+    fun getCachedDeviceDiskThreshold(deviceId: String): Float {
+        return thresholdCache["disk_$deviceId"] ?: thresholdCache["disk_global"] ?: 10f
     }
 
     fun getDeviceCpuThreshold(deviceId: String): Flow<Float> = context.dataStore.data.map { prefs ->
@@ -218,6 +272,10 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun saveDeviceThresholds(deviceId: String, cpu: Float, gpu: Float, ram: Float, disk: Float) {
+        thresholdCache["cpu_$deviceId"] = cpu
+        thresholdCache["gpu_$deviceId"] = gpu
+        thresholdCache["ram_$deviceId"] = ram
+        thresholdCache["disk_$deviceId"] = disk
         context.dataStore.edit { prefs ->
             prefs[deviceCpuKey(deviceId)] = cpu
             prefs[deviceGpuKey(deviceId)] = gpu
@@ -232,6 +290,10 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun resetDeviceThresholds(deviceId: String) {
+        thresholdCache.remove("cpu_$deviceId")
+        thresholdCache.remove("gpu_$deviceId")
+        thresholdCache.remove("ram_$deviceId")
+        thresholdCache.remove("disk_$deviceId")
         context.dataStore.edit { prefs ->
             prefs.remove(deviceCpuKey(deviceId))
             prefs.remove(deviceGpuKey(deviceId))

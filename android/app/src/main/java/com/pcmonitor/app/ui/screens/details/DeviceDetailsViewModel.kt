@@ -37,6 +37,15 @@ class DeviceDetailsViewModel(
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
+    init {
+        deviceRepository.setActiveDeviceId(deviceId)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        deviceRepository.setActiveDeviceId(null)
+    }
+
     var selectedTab by mutableStateOf(DetailTab.OVERVIEW)
         private set
 

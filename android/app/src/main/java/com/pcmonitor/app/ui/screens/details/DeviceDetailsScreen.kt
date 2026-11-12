@@ -477,8 +477,12 @@ private fun OverviewSection(
 
     // 1. CPU Temperature Card (Cream card with brown border & green sparkline)
     val cpuTemp = stats.cpu.averageTemperature
-    val cpuStr = if (isOnline && cpuTemp > 0f) {
-        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${cpuTemp.toInt()}°C (avg)"
+    val cpuStr = if (isOnline) {
+        if (cpuTemp > 0f) {
+            if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${cpuTemp.toInt()}°C (avg)"
+        } else if (stats.cpu.totalUtilization > 0f) {
+            "${stats.cpu.totalUtilization.toInt()}% util"
+        } else "Idle"
     } else "--"
 
     LaunchedEffect(cpuTemp, isOnline) {
@@ -500,8 +504,13 @@ private fun OverviewSection(
     // 2. GPU Temperature Card (if GPU available or when offline)
     if (stats.gpu != null || !isOnline) {
         val gpuTemp = stats.gpu?.temperature ?: 0f
-        val gpuStr = if (isOnline && gpuTemp > 0f) {
-            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${gpuTemp.toInt()}°C (avg)"
+        val gpuUtil = stats.gpu?.utilization ?: 0f
+        val gpuStr = if (isOnline && stats.gpu != null) {
+            if (gpuTemp > 0f) {
+                if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${gpuTemp.toInt()}°C (avg)"
+            } else if (gpuUtil > 0f) {
+                "${gpuUtil.toInt()}% util"
+            } else "Idle"
         } else "--"
 
         LaunchedEffect(gpuTemp, isOnline) {
@@ -523,7 +532,11 @@ private fun OverviewSection(
     // 3. RAM Usage Card
     val ramPercent = if (isOnline) stats.ram.usagePercent.toInt() else 0
     val ramMainValue = if (isOnline && ramPercent > 0) "$ramPercent%" else "--"
-    val ramSubValue = if (isOnline && stats.ram.totalMb > 0) "${stats.ram.usedMb / 1024} GB / ${stats.ram.totalMb / 1024} GB" else "Device offline"
+    val ramSubValue = if (isOnline && stats.ram.totalMb > 0) {
+        val usedGb = String.format(java.util.Locale.US, "%.1f", stats.ram.usedMb / 1024.0)
+        val totalGb = String.format(java.util.Locale.US, "%.1f", stats.ram.totalMb / 1024.0)
+        "$usedGb GB / $totalGb GB"
+    } else "Device offline"
     val ramProgress = if (isOnline) stats.ram.usagePercent / 100f else 0f
     CreamBarMetricCard(
         icon = Icons.Default.Memory,
@@ -968,11 +981,15 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
         )
         Spacer(modifier = Modifier.height(12.dp))
 
-        val tempStr = if (isOnline && gpu.temperature > 0f) {
-            if (useFahrenheit) "${(gpu.temperature * 9f / 5f + 32).toInt()}°F" else "${gpu.temperature.toInt()}°C"
+        val tempStr = if (isOnline) {
+            if (gpu.temperature > 0f) {
+                if (useFahrenheit) "${(gpu.temperature * 9f / 5f + 32).toInt()}°F" else "${gpu.temperature.toInt()}°C"
+            } else "Idle"
         } else "--"
         val utilStr = if (isOnline) "${gpu.utilization.toInt()}%" else "--"
-        val fanStr = if (isOnline) "${gpu.fanSpeedPercent.toInt()}%" else "--"
+        val fanStr = if (isOnline) {
+            if (gpu.fanSpeedPercent > 0f) "${gpu.fanSpeedPercent.toInt()}%" else "Auto / 0%"
+        } else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(
@@ -994,9 +1011,12 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        val clockStr = if (isOnline && gpu.clockSpeedMhz > 0f) "${gpu.clockSpeedMhz.toInt()} MHz" else "--"
-        val powerStr = if (isOnline && gpu.powerWatts > 0f) "${gpu.powerWatts.toInt()} W" else "--"
-        val vramStr = if (isOnline && gpu.vramUsedMb > 0) "${gpu.vramUsedMb / 1024} GB" else "--"
+        val clockStr = if (isOnline && gpu.clockSpeedMhz > 0f) "${gpu.clockSpeedMhz.toInt()} MHz" else if (isOnline) "Idle" else "--"
+        val powerStr = if (isOnline && gpu.powerWatts > 0f) "${gpu.powerWatts.toInt()} W" else if (isOnline) "Idle" else "--"
+        val vramStr = if (isOnline && gpu.vramUsedMb > 0) {
+            if (gpu.vramUsedMb < 1024) "${gpu.vramUsedMb} MB"
+            else String.format(java.util.Locale.US, "%.1f GB", gpu.vramUsedMb / 1024.0)
+        } else if (isOnline) "0 MB" else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(
@@ -1048,9 +1068,12 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
         )
         Spacer(modifier = Modifier.height(10.dp))
 
-        val usedStr = if (isOnline && ram.usedMb > 0) "${ram.usedMb / 1024} GB" else "--"
-        val freeStr = if (isOnline && ram.freeMb > 0) "${ram.freeMb / 1024} GB" else "--"
-        val cachedStr = if (isOnline && ram.cachedMb > 0) "${ram.cachedMb / 1024} GB" else "--"
+        val usedStr = if (isOnline && ram.usedMb > 0) String.format(java.util.Locale.US, "%.1f GB", ram.usedMb / 1024.0) else "--"
+        val freeStr = if (isOnline && ram.freeMb > 0) String.format(java.util.Locale.US, "%.1f GB", ram.freeMb / 1024.0) else "--"
+        val cachedStr = if (isOnline && ram.cachedMb > 0) {
+            if (ram.cachedMb < 1024) "${ram.cachedMb} MB"
+            else String.format(java.util.Locale.US, "%.1f GB", ram.cachedMb / 1024.0)
+        } else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(label = "Used", value = usedStr, modifier = Modifier.weight(1f))

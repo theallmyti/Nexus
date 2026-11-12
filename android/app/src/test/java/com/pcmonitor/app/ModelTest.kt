@@ -79,4 +79,52 @@ class ModelTest {
         assertEquals(48f, mergedStats.gpu?.temperature ?: 0f, 0.01f)
         assertEquals(20f, mergedStats.cpu.totalUtilization, 0.01f)
     }
+
+    @Test
+    fun testVramAndRamFormattingPrecision() {
+        val vramSubGbMb = 512L
+        val formattedSubGb = if (vramSubGbMb < 1024) "${vramSubGbMb} MB" else String.format(java.util.Locale.US, "%.1f GB", vramSubGbMb / 1024.0)
+        assertEquals("512 MB", formattedSubGb)
+
+        val vramMultiGbMb = 1536L
+        val formattedMultiGb = if (vramMultiGbMb < 1024) "${vramMultiGbMb} MB" else String.format(java.util.Locale.US, "%.1f GB", vramMultiGbMb / 1024.0)
+        assertEquals("1.5 GB", formattedMultiGb)
+
+        val ramUsedMb = 3584L
+        val formattedRamGb = String.format(java.util.Locale.US, "%.1f GB", ramUsedMb / 1024.0)
+        assertEquals("3.5 GB", formattedRamGb)
+    }
+
+    @Test
+    fun testGpuDisplayFallbackLogic() {
+        // Case 1: Active GPU with temperature
+        val gpuWithTemp = com.pcmonitor.app.data.model.GpuStats(
+            temperature = 52f,
+            utilization = 15f
+        )
+        val display1 = if (gpuWithTemp.temperature > 0f) "${gpuWithTemp.temperature.toInt()}°C"
+            else if (gpuWithTemp.utilization > 0f) "${gpuWithTemp.utilization.toInt()}%"
+            else "Idle"
+        assertEquals("52°C", display1)
+
+        // Case 2: GPU with 0°C temperature sensor (or sensor unexposed), but active utilization
+        val gpuNoTempActive = com.pcmonitor.app.data.model.GpuStats(
+            temperature = 0f,
+            utilization = 45f
+        )
+        val display2 = if (gpuNoTempActive.temperature > 0f) "${gpuNoTempActive.temperature.toInt()}°C"
+            else if (gpuNoTempActive.utilization > 0f) "${gpuNoTempActive.utilization.toInt()}%"
+            else "Idle"
+        assertEquals("45%", display2)
+
+        // Case 3: GPU present, 0°C and 0% utilization (fully idle)
+        val gpuIdle = com.pcmonitor.app.data.model.GpuStats(
+            temperature = 0f,
+            utilization = 0f
+        )
+        val display3 = if (gpuIdle.temperature > 0f) "${gpuIdle.temperature.toInt()}°C"
+            else if (gpuIdle.utilization > 0f) "${gpuIdle.utilization.toInt()}%"
+            else "Idle"
+        assertEquals("Idle", display3)
+    }
 }

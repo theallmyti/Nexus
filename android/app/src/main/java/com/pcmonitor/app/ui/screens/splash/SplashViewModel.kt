@@ -30,8 +30,8 @@ class SplashViewModel(
 
     private fun determineDestination() {
         viewModelScope.launch {
-            // Keep splash visible for 2.2 seconds to show the retro artwork
-            delay(2200L)
+            // Brief 300ms transition for smooth entry without delaying the user
+            delay(300L)
             val onboardingCompleted = preferencesRepository.onboardingCompleted.first()
             val isLoggedIn = preferencesRepository.isLoggedIn.first()
             val sessionToken = preferencesRepository.getSessionToken()
