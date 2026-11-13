@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.data.Avatar
 import com.pcmonitor.app.data.AvatarStore
 import com.pcmonitor.app.ui.theme.ArcadeYellow
+import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import java.io.ByteArrayOutputStream
 
@@ -226,7 +227,8 @@ fun AvatarPickerSheet(
     }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("Profile picture", fontFamily = ReadableFontFamily, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("Profile picture", fontFamily = PixelFontFamily, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(contentAlignment = Alignment.Center) {

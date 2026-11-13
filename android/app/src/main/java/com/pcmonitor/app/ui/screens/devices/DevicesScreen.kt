@@ -215,9 +215,10 @@ fun DevicesScreen(
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
                                     text = "No devices found",
-                                    fontFamily = ReadableFontFamily,
+                                    fontFamily = PixelFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
+                                    fontSize = 11.sp,
+                                    lineHeight = 17.sp,
                                     color = TextWhite
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))

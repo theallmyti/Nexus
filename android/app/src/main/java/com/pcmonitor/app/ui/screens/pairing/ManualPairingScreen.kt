@@ -77,9 +77,10 @@ fun ManualPairingScreen(
 
             Text(
                 text = "Enter 6-digit Pairing Code",
-                fontFamily = ReadableFontFamily,
+                fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
+                fontSize = 12.sp,
+                lineHeight = 19.sp,
                 color = MaterialTheme.colorScheme.onBackground
             )
 

@@ -149,9 +149,10 @@ fun HistoryScreen(
                         ) {
                             Text(
                                 text = currentDevice?.name ?: "Select Device",
-                                fontFamily = ReadableFontFamily,
+                                fontFamily = PixelFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 17.sp,
                                 color = CreamText
                             )
                             Icon(
@@ -190,9 +191,10 @@ fun HistoryScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "CPU Temperature",
-                            fontFamily = ReadableFontFamily,
+                            fontFamily = PixelFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
+                            fontSize = 10.sp,
+                            lineHeight = 16.sp,
                             color = CreamText
                         )
                     }

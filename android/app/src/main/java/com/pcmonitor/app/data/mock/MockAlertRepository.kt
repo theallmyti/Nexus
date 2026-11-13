@@ -74,6 +74,7 @@ class MockAlertRepository(
         .build()
 
     init {
+        relabelOnDeviceChanges()
         // Observe user session changes
         userPreferencesRepository?.let { prefs ->
             repositoryScope.launch {
@@ -139,6 +140,30 @@ class MockAlertRepository(
         }
     }
 
+    /**
+     * The server sends only the device id. Alerts can arrive before the device list does, so
+     * an unknown id is "Removed device" only once the list has loaded; until then the name is
+     * blank and [relabelOnDeviceChanges] fills it in.
+     */
+    private fun nameFor(deviceId: String): String {
+        val devices = deviceRepository.devices.value
+        return devices.find { it.id == deviceId }?.name ?: if (devices.isEmpty()) "" else "Removed device"
+    }
+
+    private fun relabelOnDeviceChanges() {
+        repositoryScope.launch {
+            deviceRepository.devices.collect { devices ->
+                if (devices.isEmpty()) return@collect
+                val current = _alerts.value
+                val relabeled = current.map { a ->
+                    val name = devices.find { it.id == a.deviceId }?.name ?: "Removed device"
+                    if (a.deviceName != name) a.copy(deviceName = name) else a
+                }
+                if (relabeled != current) _alerts.value = relabeled
+            }
+        }
+    }
+
     private fun parseConvexAlerts(arr: JSONArray): List<Alert> {
         val list = mutableListOf<Alert>()
         for (i in 0 until arr.length()) {
@@ -150,9 +175,7 @@ class MockAlertRepository(
             val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
             val deviceId = obj.optString("deviceId")
             // The server sends only the device id: name it from the user's device list.
-            val devName = obj.optString("deviceName").ifBlank {
-                deviceRepository.devices.value.find { it.id == deviceId }?.name ?: "Removed device"
-            }
+            val devName = obj.optString("deviceName").ifBlank { nameFor(deviceId) }
 
             val (severity, category, title, description) = when (type) {
                 "cpuTemp" -> Quadruple(

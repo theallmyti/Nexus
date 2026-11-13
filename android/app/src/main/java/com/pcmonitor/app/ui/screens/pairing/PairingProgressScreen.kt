@@ -365,9 +365,10 @@ private fun PairingStepRow(
 
         Text(
             text = title,
-            fontFamily = ReadableFontFamily,
+            fontFamily = PixelFontFamily,
             fontWeight = if (isCurrent || isCompleted || isError) FontWeight.Bold else FontWeight.Normal,
-            fontSize = 14.sp,
+            fontSize = 10.sp,
+            lineHeight = 16.sp,
             color = when {
                 isError -> CriticalRed
                 isCompleted || isCurrent -> MaterialTheme.colorScheme.onBackground
@@ -402,9 +403,10 @@ private fun ConfirmComputerCard(name: String, os: String) {
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = name,
-                fontFamily = ReadableFontFamily,
+                fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
+                fontSize = 12.sp,
+                lineHeight = 19.sp,
                 color = DeepNavy,
                 textAlign = TextAlign.Center
             )

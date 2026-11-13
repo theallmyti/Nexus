@@ -110,9 +110,10 @@ fun DeviceCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = device.name,
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 11.sp,
+                        lineHeight = 17.sp,
                         color = WhiteCardText
                     )
                     Spacer(modifier = Modifier.height(2.dp))

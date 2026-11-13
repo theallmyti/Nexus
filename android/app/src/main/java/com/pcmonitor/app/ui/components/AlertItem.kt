@@ -117,9 +117,10 @@ fun AlertItem(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = alert.title,
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        fontSize = 10.sp,
+                        lineHeight = 16.sp,
                         color = WhiteCardText
                     )
                 }

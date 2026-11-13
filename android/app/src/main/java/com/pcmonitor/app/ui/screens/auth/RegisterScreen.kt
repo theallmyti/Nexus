@@ -35,6 +35,7 @@ import com.pcmonitor.app.ui.components.TurnstileWidget
 import com.pcmonitor.app.ui.theme.ArcadeYellow
 import com.pcmonitor.app.ui.theme.CriticalRed
 import com.pcmonitor.app.ui.theme.DeepNavy
+import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextGray
@@ -69,9 +70,10 @@ fun RegisterScreen(
 
             Text(
                 text = "Join Nexus",
-                fontFamily = ReadableFontFamily,
+                fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 24.sp,
+                fontSize = 16.sp,
+                lineHeight = 25.sp,
                 color = TextWhite
             )
 

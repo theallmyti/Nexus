@@ -782,11 +782,12 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
             // Per-core temperatures line up with the load rows when the chip reports them.
             val temps = cpu.coreTemperatures.takeIf { it.size == threads.size }
             Text(
-                text = if (temps != null) "Load and temperature per logical processor (${threads.size})"
-                else "Load per logical processor (${threads.size})",
-                fontFamily = ReadableFontFamily,
+                text = if (temps != null) "Load & temp per CPU (${threads.size})"
+                else "Load per CPU (${threads.size})",
+                fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
+                fontSize = 10.sp,
+                lineHeight = 16.sp,
                 color = CreamTextSecondary
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -966,10 +967,11 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "Top 5 Memory-Consuming Processes",
-            fontFamily = ReadableFontFamily,
+            text = "Top 5 by memory",
+            fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
+            fontSize = 10.sp,
+            lineHeight = 16.sp,
             color = CreamTextSecondary
         )
         Spacer(modifier = Modifier.height(8.dp))

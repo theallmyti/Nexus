@@ -161,9 +161,10 @@ fun AlertDetailScreen(
 
                     Text(
                         text = alert.title,
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
                         color = Color(0xFF3E2F1C)
                     )
 

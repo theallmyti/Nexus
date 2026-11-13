@@ -32,6 +32,7 @@ import com.pcmonitor.app.ui.components.RetroTopBar
 import com.pcmonitor.app.ui.theme.CriticalRed
 import com.pcmonitor.app.ui.theme.DeepNavy
 import com.pcmonitor.app.ui.theme.PixelGreen
+import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.TextGray
 import com.pcmonitor.app.ui.theme.TextWhite
@@ -63,9 +64,10 @@ fun ForgotPasswordScreen(
 
             Text(
                 text = "Forgot Your Password?",
-                fontFamily = ReadableFontFamily,
+                fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
                 color = TextWhite
             )
 

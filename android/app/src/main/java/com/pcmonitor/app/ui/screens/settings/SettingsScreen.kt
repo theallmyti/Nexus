@@ -127,9 +127,10 @@ fun SettingsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = state.userName,
-                            fontFamily = ReadableFontFamily,
+                            fontFamily = PixelFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 12.sp,
+                            lineHeight = 19.sp,
                             color = Color(0xFF3E2F1C)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -387,9 +388,10 @@ internal fun SettingsMenuItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    fontFamily = ReadableFontFamily,
+                    fontFamily = PixelFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 16.sp,
                     color = Color(0xFF3E2F1C)
                 )
                 if (subtitle != null) {

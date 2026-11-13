@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -425,3 +426,67 @@ fun PixelScanScene(modifier: Modifier = Modifier) {
     }
 }
 
+
+// ─────────────────────────────────────────────────────────
+// Pull-to-refresh: a pixel monitor instead of the stock spinner
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Slides down with the pull. While pulling, the monitor's screen fills with green bars to show how
+ * close the pull is to triggering; while refreshing, a scan line sweeps the screen and a cursor blinks.
+ * [pullFraction] is 0 at rest and 1 at the trigger point (it can go past 1).
+ */
+@Composable
+fun PixelRefreshIndicator(pullFraction: Float, refreshing: Boolean, modifier: Modifier = Modifier) {
+    val motion = rememberMotionEnabled()
+    val loop = rememberInfiniteTransition(label = "refresh")
+    val sweep by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "sweep")
+    val blink by loop.animateFloat(0f, 1f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "blink")
+    val shown = if (refreshing) 1f else pullFraction.coerceIn(0f, 1f)
+    if (shown <= 0f) return
+
+    Canvas(
+        modifier = modifier
+            .size(56.dp)
+            .graphicsLayer {
+                translationY = (shown * 72.dp.toPx()) - 56.dp.toPx()
+                alpha = shown
+            }
+    ) {
+        val u = size.width / 16f
+        fun r(c: Color, x: Float, y: Float, w: Float, h: Float) =
+            drawRect(c, Offset(x * u, y * u), Size(w * u, h * u))
+
+        // Cream tile behind the monitor, like the app's cards
+        drawRoundRect(
+            Color(0xFFFFF8E7), Offset.Zero, size,
+            androidx.compose.ui.geometry.CornerRadius(4 * u)
+        )
+        drawRoundRect(
+            Color(0xFF8B7355), Offset.Zero, size,
+            androidx.compose.ui.geometry.CornerRadius(4 * u),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.6f * u)
+        )
+        // Monitor
+        r(ArcadeYellow, 2.5f, 2f, 11f, 8.5f)
+        r(Color(0xFF0F1B2E), 3.5f, 3f, 9f, 6.5f)
+        r(ArcadeYellowDark, 7f, 10.5f, 2f, 1.5f)
+        r(ArcadeYellow, 5f, 12f, 6f, 1.5f)
+
+        if (!refreshing) {
+            // Pull progress: up to 4 green bars light up across the screen
+            val bars = (pullFraction.coerceIn(0f, 1f) * 4).toInt()
+            for (i in 0 until 4) {
+                val on = i < bars
+                r(if (on) Color(0xFF4CAF50) else Color(0xFF1E3A2A), 4.3f + i * 2f, 4f, 1.4f, 4.5f)
+            }
+        } else {
+            // Refreshing: scan line sweeps down, cursor blinks
+            val y = 3.3f + (if (motion) sweep else 0.5f) * 5.6f
+            r(Color(0xFF4CAF50), 3.8f, y, 8.4f, 0.6f)
+            r(Color(0xFF2E7D32), 4.3f, 4f, 4f, 0.8f)
+            r(Color(0xFF2E7D32), 4.3f, 5.5f, 6f, 0.8f)
+            if (!motion || blink > 0.5f) r(Color(0xFF81C784), 4.3f, 7.2f, 1.2f, 1.2f)
+        }
+    }
+}

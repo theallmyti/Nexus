@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,10 +91,21 @@ fun HomeScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ArcadeYellow)
             }
-        } else PullToRefreshBox(
+        } else {
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
             isRefreshing = viewModel.isRefreshing,
             onRefresh = { viewModel.refresh() },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            state = pullState,
+            // Themed indicator: a pixel monitor instead of Material's spinner
+            indicator = {
+                com.pcmonitor.app.ui.components.PixelRefreshIndicator(
+                    pullFraction = pullState.distanceFraction,
+                    refreshing = viewModel.isRefreshing,
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                )
+            }
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -164,9 +176,10 @@ fun HomeScreen(
                     // Greeting (original layout)
                     Text(
                         text = "${greeting()}, ${state.userName}!",
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -199,9 +212,10 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Your Devices",
-                            fontFamily = ReadableFontFamily,
+                            fontFamily = PixelFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -237,6 +251,7 @@ fun HomeScreen(
                 }
             }
         }
+        }
     }
 
     // Bell: a quick peek at the latest alerts without leaving Home; the Alerts tab has the full list.
@@ -253,9 +268,10 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = "Latest alerts",
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 19.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (state.unreadAlertCount > 0) {

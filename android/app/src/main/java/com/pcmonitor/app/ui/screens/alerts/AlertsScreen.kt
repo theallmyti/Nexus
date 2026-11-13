@@ -145,9 +145,10 @@ fun AlertsScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "No alerts in this category",
-                            fontFamily = ReadableFontFamily,
+                            fontFamily = PixelFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 17.sp,
                             color = TextWhite
                         )
                         Spacer(modifier = Modifier.height(4.dp))

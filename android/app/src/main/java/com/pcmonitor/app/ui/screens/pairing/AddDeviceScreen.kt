@@ -162,9 +162,10 @@ private fun PairingOptionCard(
             Column {
                 Text(
                     text = title,
-                    fontFamily = ReadableFontFamily,
+                    fontFamily = PixelFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 11.sp,
+                    lineHeight = 17.sp,
                     color = Color(0xFF0F172A)
                 )
                 Spacer(modifier = Modifier.height(3.dp))

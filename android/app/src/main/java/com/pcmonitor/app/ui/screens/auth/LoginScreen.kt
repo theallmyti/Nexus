@@ -117,9 +117,10 @@ fun LoginScreen(
                     // Welcome Back!
                     Text(
                         text = "Sign in",
-                        fontFamily = ReadableFontFamily,
+                        fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
+                        fontSize = 16.sp,
+                        lineHeight = 25.sp,
                         color = WhiteCardText
                     )
 

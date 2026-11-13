@@ -48,6 +48,7 @@ import com.pcmonitor.app.data.model.problem
 import com.pcmonitor.app.notification.NotificationHelper
 import com.pcmonitor.app.ui.theme.CreamText
 import com.pcmonitor.app.ui.theme.CreamTextSecondary
+import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.WhiteCardBg
 import com.pcmonitor.app.ui.theme.WhiteCardBorder
@@ -63,9 +64,10 @@ private val Track = Color(0xFFE8DFC8)
 fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = Color(0xFF94A3B8)) {
     Text(
         text = text,
-        fontFamily = ReadableFontFamily,
+        fontFamily = PixelFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 15.sp,
+        fontSize = 11.sp,
+        lineHeight = 17.sp,
         color = color,
         modifier = modifier
     )
@@ -213,9 +215,10 @@ fun StartHereCard(hasDevices: Boolean, onAddDevice: () -> Unit, onOpenThresholds
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "${next.action} →",
-                    fontFamily = ReadableFontFamily,
+                    fontFamily = PixelFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 16.sp,
                     color = Color.White,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
