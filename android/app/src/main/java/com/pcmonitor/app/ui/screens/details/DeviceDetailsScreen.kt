@@ -377,6 +377,8 @@ fun DeviceDetailsScreen(
                                 device = device,
                                 useFahrenheit = state.useFahrenheit,
                                 onUnpairClick = { showUnpairDialog = true }
+                            ,
+                                viewModel = viewModel
                             )
                         }
                         DetailTab.CPU -> {
@@ -413,7 +415,7 @@ fun DeviceDetailsScreen(
                 onDismissRequest = { showUnpairDialog = false },
                 title = {
                     Text(
-                        text = "UNPAIR DEVICE?",
+                        text = if (device.shared) "REMOVE FROM YOUR ACCOUNT?" else "UNPAIR DEVICE?",
                         fontFamily = PixelFontFamily,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -422,7 +424,11 @@ fun DeviceDetailsScreen(
                 },
                 text = {
                     Text(
-                        text = "Are you sure you want to unpair \"${device.name}\"? This will remove it from your account and stop live monitoring.",
+                        text = if (device.shared) {
+                            "\"${device.name}\" was shared with you. Removing it only takes it off your account; the owner keeps it."
+                        } else {
+                            "Are you sure you want to unpair \"${device.name}\"? This will remove it from your account and stop live monitoring."
+                        },
                         fontFamily = ReadableFontFamily,
                         fontSize = 14.sp,
                         color = CreamTextSecondary
@@ -440,7 +446,7 @@ fun DeviceDetailsScreen(
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "UNPAIR",
+                            text = if (device.shared) "REMOVE" else "UNPAIR",
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -477,7 +483,8 @@ fun DeviceDetailsScreen(
 private fun OverviewSection(
     device: Device,
     useFahrenheit: Boolean,
-    onUnpairClick: () -> Unit
+    onUnpairClick: () -> Unit,
+    viewModel: DeviceDetailsViewModel
 ) {
     val stats = device.hardwareStats
     val isOnline = device.isOnline
@@ -565,7 +572,12 @@ private fun OverviewSection(
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Danger Zone: Unpair Device button
+    if (!device.shared) {
+        PeopleWithAccessCard(viewModel)
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    // Danger Zone: Unpair Device button (for a shared computer it only leaves)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -588,7 +600,7 @@ private fun OverviewSection(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "UNPAIR THIS DEVICE",
+                text = if (device.shared) "REMOVE FROM MY ACCOUNT" else "UNPAIR THIS DEVICE",
                 fontFamily = PixelFontFamily,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -1207,6 +1219,71 @@ private fun SnoozeButton(deviceId: String) {
                         val t = untilFn()
                         AlertSnooze.snooze(context, deviceId, t); until = t; open = false
                     }
+                )
+            }
+        }
+    }
+}
+
+/** Owner's view of who else can see this computer, with Remove. Hidden when nobody else can. */
+@Composable
+private fun PeopleWithAccessCard(viewModel: DeviceDetailsViewModel) {
+    LaunchedEffect(Unit) { viewModel.loadShares() }
+    val shares = viewModel.shares
+    if (shares.isEmpty() && viewModel.sharesError == null) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(CreamSurface)
+            .border(1.5.dp, CreamBorderLight, RoundedCornerShape(8.dp))
+            .padding(12.dp)
+    ) {
+        Text(
+            text = "People with access",
+            fontFamily = PixelFontFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            lineHeight = 16.sp,
+            color = CreamText
+        )
+        Text(
+            text = "They can see this computer's readings and get its alerts. Only you can rename or unpair it.",
+            fontFamily = ReadableFontFamily,
+            fontSize = 11.sp,
+            color = CreamTextSecondary,
+            modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+        )
+        viewModel.sharesError?.let {
+            Text(it, fontFamily = ReadableFontFamily, fontSize = 11.sp, color = OfflineRed)
+        }
+        shares.forEach { share ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = share.name ?: share.email ?: "Someone",
+                        fontFamily = ReadableFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = CreamText
+                    )
+                    if (share.name != null && share.email != null) {
+                        Text(share.email, fontFamily = ReadableFontFamily, fontSize = 11.sp, color = CreamTextSecondary)
+                    }
+                }
+                Text(
+                    text = "Remove",
+                    fontFamily = ReadableFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = OfflineRed,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { viewModel.removeShare(share.userId) }
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
                 )
             }
         }

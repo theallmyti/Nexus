@@ -13,7 +13,9 @@ data class Device(
     val ownerId: String = "",
     // From the agent's capabilities at registration. null = unknown (older agent), so trust live data.
     val hasGpu: Boolean? = null,
-    val hasBattery: Boolean? = null
+    val hasBattery: Boolean? = null,
+    /** Another account owns it and shared it with this one: view only, "remove" leaves. */
+    val shared: Boolean = false
 ) {
     /** Drops GPU/battery data for hardware the agent said this device doesn't have. */
     fun gate(stats: HardwareStats): HardwareStats = stats.copy(
@@ -21,6 +23,9 @@ data class Device(
         battery = if (hasBattery == false) null else stats.battery
     )
 }
+
+/** Someone who can see a computer besides its owner (owner's "People with access" list). */
+data class DeviceShare(val userId: String, val name: String?, val email: String?)
 
 /** RAM/VRAM sizes with one decimal, so a 15.7 GB machine isn't shown as "15 GB". */
 fun formatGb(mb: Long): String {

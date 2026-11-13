@@ -53,6 +53,17 @@ export default defineSchema({
     .index("by_key_at", ["key", "at"])
     .index("by_at", ["at"]),
 
+  // Extra accounts that can see a computer besides its owner (devices.userId). Added when someone
+  // pairs a computer that already belongs to another account; the owner can remove them.
+  deviceShares: defineTable({
+    deviceId: v.id("devices"),
+    userId: v.id("users"),
+    sharedAt: v.number(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_user", ["userId"])
+    .index("by_device_user", ["deviceId", "userId"]),
+
   devices: defineTable({
     // Owner, set when a signed-in user confirms pairing. Every read checks it (docs/Security.md §2).
     userId: v.optional(v.id("users")),

@@ -77,6 +77,85 @@ export async function ownedDevice(
   return device;
 }
 
+/** True if `user` owns the device or it has been shared with them. */
+export async function canView(ctx: Pick<QueryCtx, "db">, user: Doc<"users">, device: Doc<"devices">) {
+  if (device.userId === user._id) return true;
+  const share = await ctx.db
+    .query("deviceShares")
+    .withIndex("by_device_user", (q) => q.eq("deviceId", device._id).eq("userId", user._id))
+    .first();
+  return share !== null;
+}
+
+/** A device the user owns or that is shared with them; same error as ownedDevice otherwise. */
+export async function viewableDevice(
+  ctx: Pick<QueryCtx, "db">,
+  user: Doc<"users">,
+  deviceId: Id<"devices">,
+) {
+  const device = await ctx.db.get(deviceId);
+  if (!device || !(await canView(ctx, user, device))) throw new ConvexError("device not found");
+  return device;
+}
+
+/** Devices shared with the user (not the ones they own). */
+export async function sharedDevicesOf(ctx: Pick<QueryCtx, "db">, userId: Id<"users">) {
+  const shares = await ctx.db
+    .query("deviceShares")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const devices = await Promise.all(shares.map((s) => ctx.db.get(s.deviceId)));
+  return devices.filter((d): d is Doc<"devices"> => d !== null && d.userId !== undefined);
+}
+
+/** Everyone who should get this device's alerts: the owner first, then shared accounts. */
+export async function deviceMemberIds(ctx: Pick<QueryCtx, "db">, device: Doc<"devices">) {
+  if (!device.userId) return [];
+  const shares = await ctx.db
+    .query("deviceShares")
+    .withIndex("by_device", (q) => q.eq("deviceId", device._id))
+    .collect();
+  return [device.userId, ...shares.map((s) => s.userId).filter((u) => u !== device.userId)];
+}
+
+/**
+ * Pairing a computer that already belongs to someone else shares it with `user` instead of
+ * moving or duplicating it. Returns true if a new share was added.
+ */
+export async function shareDevice(ctx: MutationCtx, device: Doc<"devices">, userId: Id<"users">) {
+  if (device.userId === userId) return false;
+  const existing = await ctx.db
+    .query("deviceShares")
+    .withIndex("by_device_user", (q) => q.eq("deviceId", device._id).eq("userId", userId))
+    .first();
+  if (existing) return false;
+  await ctx.db.insert("deviceShares", { deviceId: device._id, userId, sharedAt: Date.now() });
+  return true;
+}
+
+/** Take a shared device off one account: the share, plus that person's alerts and limits for it. */
+export async function leaveDevice(ctx: MutationCtx, deviceId: Id<"devices">, userId: Id<"users">) {
+  for (const s of await ctx.db
+    .query("deviceShares")
+    .withIndex("by_device_user", (q) => q.eq("deviceId", deviceId).eq("userId", userId))
+    .collect()) {
+    await ctx.db.delete(s._id);
+  }
+  for (const a of await ctx.db
+    .query("alerts")
+    .withIndex("by_device_type_time", (q) => q.eq("deviceId", deviceId))
+    .filter((q) => q.eq(q.field("userId"), userId))
+    .collect()) {
+    await ctx.db.delete(a._id);
+  }
+  for (const t of await ctx.db
+    .query("thresholds")
+    .withIndex("by_user_device", (q) => q.eq("userId", userId).eq("deviceId", deviceId))
+    .collect()) {
+    await ctx.db.delete(t._id);
+  }
+}
+
 // Remove a device with its live row and pairing codes; history is deleted in batches.
 export async function removeDeviceData(ctx: MutationCtx, device: Doc<"devices">) {
   for (const row of await ctx.db
@@ -109,6 +188,12 @@ export async function removeDeviceData(ctx: MutationCtx, device: Doc<"devices">)
     .withIndex("by_device", (q) => q.eq("deviceId", device._id))
     .collect()) {
     await ctx.db.delete(t._id);
+  }
+  for (const s of await ctx.db
+    .query("deviceShares")
+    .withIndex("by_device", (q) => q.eq("deviceId", device._id))
+    .collect()) {
+    await ctx.db.delete(s._id);
   }
   await ctx.db.delete(device._id);
   await ctx.scheduler.runAfter(0, internal.summaries.deleteForDevice, { deviceId: device._id });

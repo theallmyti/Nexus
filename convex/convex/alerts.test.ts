@@ -162,3 +162,24 @@ test("per-drive limits are owner-only and range-checked", async () => {
   ).rejects.toThrow(/out of range/);
   await expect(t.mutation(api.devices.updateThresholds, { token, diskFreePct: 95 })).rejects.toThrow(/out of range/);
 });
+
+test("a shared computer alerts the owner and everyone it is shared with, each once", async () => {
+  const t = convexTest(schema, modules);
+  const { token: ownerToken } = await userWithDevice(t);
+  const { token: otherToken } = await t.action(api.auth.signUp, {
+    turnstileToken: "test-token", email: "family@example.com", password: "password two",
+  });
+  const { code } = await t.mutation(api.pairing.start, { secretHash: HASH, name: "laptop", os: "windows" });
+  await t.mutation(api.dashboard.confirmPairing, { token: otherToken, code });
+
+  await push(t, HOT);
+  const forOwner = await t.query(api.devices.getMyAlerts, { token: ownerToken });
+  const forOther = await t.query(api.devices.getMyAlerts, { token: otherToken });
+  expect(forOwner.map((a) => a.type).sort()).toEqual(["cpuTemp", "gpuTemp", "ram"]);
+  expect(forOther.map((a) => a.type).sort()).toEqual(["cpuTemp", "gpuTemp", "ram"]);
+
+  // Each person's own cooldown: another hot minute adds nothing for either of them.
+  vi.advanceTimersByTime(60_000);
+  await push(t, HOT);
+  expect(await t.query(api.devices.getMyAlerts, { token: otherToken })).toHaveLength(3);
+});

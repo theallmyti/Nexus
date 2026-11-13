@@ -297,6 +297,13 @@ export const deleteAccount = mutation({
     }
     const userId = found.user._id;
     if (found.user.avatarFileId) await ctx.storage.delete(found.user.avatarFileId);
+    // Computers shared with this account: drop the access (the owners keep their computers).
+    for (const sh of await ctx.db
+      .query("deviceShares")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect()) {
+      await ctx.db.delete(sh._id);
+    }
 
     // 1. Delete all sessions for this user
     const userSessions = await ctx.db

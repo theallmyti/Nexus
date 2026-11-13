@@ -68,6 +68,28 @@ class DeviceDetailsViewModel(
         selectedTab = tab
     }
 
+    // --- People with access (owner only) ---
+    var shares by androidx.compose.runtime.mutableStateOf<List<com.pcmonitor.app.data.model.DeviceShare>>(emptyList())
+        private set
+    var sharesError by androidx.compose.runtime.mutableStateOf<String?>(null)
+        private set
+
+    fun loadShares() {
+        viewModelScope.launch {
+            deviceRepository.getShares(deviceId)
+                .onSuccess { shares = it; sharesError = null }
+                .onFailure { sharesError = it.message }
+        }
+    }
+
+    fun removeShare(userId: String) {
+        viewModelScope.launch {
+            deviceRepository.removeShare(deviceId, userId)
+                .onSuccess { loadShares() }
+                .onFailure { sharesError = it.message }
+        }
+    }
+
     fun unpairDevice(onComplete: () -> Unit) {
         viewModelScope.launch {
             deviceRepository.removeDevice(deviceId)

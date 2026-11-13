@@ -600,20 +600,13 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                             .args(["pair", "--gui", &config_path.to_string_lossy()])
                             .creation_flags(CREATE_NO_WINDOW)
                             .spawn();
-                    } else {
-                        let _ = std::process::Command::new("powershell")
-                            .args([
-                                "-NoProfile",
-                                "-WindowStyle",
-                                "Hidden",
-                                "-Command",
-                                &format!(
-                                    "Start-Process -FilePath '{}' -ArgumentList 'pair --gui \"{}\"' -Verb RunAs",
-                                    exe_path.display(),
-                                    config_path.display()
-                                ),
-                            ])
-                            .status();
+                    } else if let Err(e) = run_elevated(
+                        &exe_path,
+                        &format!("pair --gui \"{}\"", config_path.display()),
+                        true,
+                        false,
+                    ) {
+                        show_error(&format!("Couldn't open the pairing window ({e})."));
                     }
                 }
                 #[cfg(not(windows))]
@@ -645,16 +638,15 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             update_tray(hwnd);
 
             std::thread::spawn(|| {
-                // Elevate via UAC runas verb so the service restart doesn't silently fail from a standard user session
-                let _ = std::process::Command::new("powershell")
-                    .args([
-                        "-NoProfile",
-                        "-WindowStyle",
-                        "Hidden",
-                        "-Command",
-                        "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -WindowStyle Hidden -Command Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue'",
-                    ])
-                    .status();
+                // Restarting a service needs admin: one UAC prompt, straight from the tray.
+                if let Err(e) = run_elevated(
+                    &powershell_path(),
+                    "-NoProfile -WindowStyle Hidden -Command \"Restart-Service NexusAgent -ErrorAction SilentlyContinue; Start-Service NexusAgent -ErrorAction SilentlyContinue\"",
+                    false,
+                    false,
+                ) {
+                    show_error(&format!("Couldn't restart the Nexus service ({e})."));
+                }
             });
         }
         ID_UNPAIR => {
@@ -701,23 +693,21 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
                 // is doubled twice.
                 #[cfg(windows)]
                 {
-                    let ps_quote = |p: &Path| p.display().to_string().replace('\'', "''''");
-                    let inner = format!(
-                        "& ''{}'' unpair ''{}''; Restart-Service NexusAgent, PCMonitorAgent -ErrorAction SilentlyContinue",
+                    // Single-quoted PowerShell strings: a ' inside a path is doubled.
+                    let ps_quote = |p: &Path| p.display().to_string().replace('\'', "''");
+                    let script = format!(
+                        "& '{}' unpair '{}'; Restart-Service NexusAgent -ErrorAction SilentlyContinue",
                         ps_quote(&exe_path),
                         ps_quote(&config_path)
                     );
-                    let _ = std::process::Command::new("powershell")
-                        .args([
-                            "-NoProfile",
-                            "-WindowStyle",
-                            "Hidden",
-                            "-Command",
-                            &format!(
-                                "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -WindowStyle Hidden -Command {inner}'"
-                            ),
-                        ])
-                        .status();
+                    if let Err(e) = run_elevated(
+                        &powershell_path(),
+                        &format!("-NoProfile -WindowStyle Hidden -Command \"{script}\""),
+                        false,
+                        true,
+                    ) {
+                        show_error(&format!("Couldn't unpair this computer ({e})."));
+                    }
                 }
             });
         }
@@ -725,6 +715,61 @@ fn handle_menu_command(hwnd: HWND, cmd: usize) {
             PostQuitMessage(0);
         },
         _ => {}
+    }
+}
+
+/// Windows PowerShell by full path, so it works whatever PATH the tray was started with.
+#[cfg(windows)]
+fn powershell_path() -> PathBuf {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+}
+
+/// Runs `file params` with administrator rights via the UAC prompt (ShellExecuteEx "runas"),
+/// without a PowerShell hop. Declining the prompt is a normal cancel, not an error.
+/// `show`: give the program a visible window; `wait`: block until it exits.
+#[cfg(windows)]
+fn run_elevated(file: &Path, params: &str, show: bool, wait: bool) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, GetLastError};
+    use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
+    use windows_sys::Win32::UI::Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWNORMAL};
+
+    let verb = to_wide("runas");
+    let file_w = to_wide(&file.display().to_string());
+    let params_w = to_wide(params);
+    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = if wait { SEE_MASK_NOCLOSEPROCESS } else { 0 };
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = file_w.as_ptr();
+    info.lpParameters = params_w.as_ptr();
+    info.nShow = if show { SW_SHOWNORMAL } else { SW_HIDE } as _;
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let err = unsafe { GetLastError() };
+        return if err == ERROR_CANCELLED {
+            Ok(())
+        } else {
+            Err(format!("Windows error {err}"))
+        };
+    }
+    if wait && info.hProcess != 0 {
+        unsafe {
+            WaitForSingleObject(info.hProcess, INFINITE);
+            CloseHandle(info.hProcess);
+        }
+    }
+    Ok(())
+}
+
+/// A small warning box, so a tray action never fails silently.
+#[cfg(windows)]
+fn show_error(text: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
+    let body = to_wide(text);
+    let title = to_wide("Nexus");
+    unsafe {
+        MessageBoxW(0, body.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);
     }
 }
 

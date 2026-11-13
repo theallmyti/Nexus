@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { requireUser, requireUserAndTouch } from "./model";
+import { canView, deviceBySecretHash, leaveDevice, removeDeviceData, requireUser, requireUserAndTouch, shareDevice, sharedDevicesOf } from "./model";
 import { isLimited, recordEvent, LIMITS } from "./rateLimit";
 
 /**
@@ -16,6 +16,13 @@ import { isLimited, recordEvent, LIMITS } from "./rateLimit";
 
 const OFFLINE_AFTER_MS = 3 * 60 * 1000; // 3-minute grace period per FR-44
 
+// The device's secret hash is the agent's credential: never send it to a client (with sharing,
+// other accounts read these responses and could otherwise pose as the computer).
+function withoutSecret<T extends { secretHash?: string }>(d: T): Omit<T, "secretHash"> {
+  const { secretHash: _secret, ...rest } = d;
+  return rest;
+}
+
 function inferOs(device: any): string {
   if (device.os) return device.os;
   if (device.capabilities?.windowsMode) return "windows";
@@ -30,10 +37,11 @@ export const getMyDevices = query({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
-    const devices = await ctx.db
+    const owned = await ctx.db
       .query("devices")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
+    const devices = [...owned, ...(await sharedDevicesOf(ctx, user._id))];
 
     const now = Date.now();
     const latestList = await Promise.all(
@@ -51,10 +59,11 @@ export const getMyDevices = query({
         (l && now - (l.ts ?? 0) < 45_000) ||
         now - (d.lastSeenAt ?? 0) < OFFLINE_AFTER_MS;
       return {
-        ...d,
+        ...withoutSecret(d),
         os: inferOs(d),
         online: Boolean(isOnline),
         latest: l ?? undefined,
+        shared: d.userId !== user._id,
       };
     });
   },
@@ -69,7 +78,7 @@ export const getDevice = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const device = await ctx.db.get(args.deviceId);
-    if (!device || device.userId !== user._id) {
+    if (!device || !(await canView(ctx, user, device))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
 
@@ -83,7 +92,7 @@ export const getDevice = query({
       now - (device.lastSeenAt ?? 0) < OFFLINE_AFTER_MS;
 
     return {
-      ...device,
+      ...withoutSecret(device),
       os: inferOs(device),
       online: Boolean(isOnline),
       latest: latest ?? undefined,
@@ -100,7 +109,7 @@ export const getDeviceLatest = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const device = await ctx.db.get(args.deviceId);
-    if (!device || device.userId !== user._id) {
+    if (!device || !(await canView(ctx, user, device))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
 
@@ -156,64 +165,56 @@ export const deleteDevice = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     const device = await ctx.db.get(args.deviceId);
-    if (!device || device.userId !== user._id) {
+    if (!device || !(await canView(ctx, user, device))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
-
-    // Cascade delete `latest` snapshot
-    const latestDocs = await ctx.db
-      .query("latest")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
-      .collect();
-    for (const doc of latestDocs) {
-      await ctx.db.delete(doc._id);
+    if (device.userId !== user._id) {
+      await leaveDevice(ctx, device._id, user._id);
+      return { success: true, left: true };
     }
-
-    // Cascade delete summaries
-    const summaries = await ctx.db
-      .query("summaries")
-      .withIndex("by_device_time", (q) => q.eq("deviceId", args.deviceId))
-      .collect();
-    for (const s of summaries) {
-      await ctx.db.delete(s._id);
-    }
-
-    // Cascade delete diskThresholds
-    const diskThresh = await ctx.db
-      .query("diskThresholds")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
-      .collect();
-    for (const d of diskThresh) {
-      await ctx.db.delete(d._id);
-    }
-
-    // Cascade delete device alerts
-    const deviceAlerts = await ctx.db
-      .query("alerts")
-      .withIndex("by_user_time", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("deviceId"), args.deviceId))
-      .collect();
-    for (const a of deviceAlerts) {
-      await ctx.db.delete(a._id);
-    }
-
-    // Clean up pairing requests
-    if (device.secretHash) {
-      const pairingDocs = await ctx.db
-        .query("pairingRequests")
-        .withIndex("by_secretHash", (q) => q.eq("secretHash", device.secretHash))
-        .collect();
-      for (const doc of pairingDocs) {
-        await ctx.db.delete(doc._id);
-      }
-    }
-
-    await ctx.db.delete(args.deviceId);
+    // Owner: the computer, its data, and everyone's access go together.
+    await removeDeviceData(ctx, device);
     return { success: true };
   },
 });
 
-// 6. Set viewer timestamp (tells agent to boost telemetry rate to 1s)
+// Who can see this computer besides the owner (owner only).
+export const getDeviceShares = query({
+  args: { token: v.string(), deviceId: v.id("devices") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const device = await ctx.db.get(args.deviceId);
+    if (!device || device.userId !== user._id) {
+      throw new ConvexError("Unauthorized: device does not belong to session");
+    }
+    const shares = await ctx.db
+      .query("deviceShares")
+      .withIndex("by_device", (q) => q.eq("deviceId", device._id))
+      .collect();
+    const people = await Promise.all(shares.map((sh) => ctx.db.get(sh.userId)));
+    return shares.map((sh, i) => ({
+      userId: sh.userId,
+      name: people[i]?.name ?? null,
+      email: people[i]?.email ?? null,
+      sharedAt: sh.sharedAt,
+    }));
+  },
+});
+
+// Owner removes someone's access.
+export const removeDeviceShare = mutation({
+  args: { token: v.string(), deviceId: v.id("devices"), userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await requireUserAndTouch(ctx, args.token);
+    const device = await ctx.db.get(args.deviceId);
+    if (!device || device.userId !== user._id) {
+      throw new ConvexError("Unauthorized: device does not belong to session");
+    }
+    await leaveDevice(ctx, device._id, args.userId);
+    return { success: true };
+  },
+});
+
 export const setViewer = mutation({
   args: {
     token: v.string(),
@@ -222,7 +223,7 @@ export const setViewer = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     const device = await ctx.db.get(args.deviceId);
-    if (!device || device.userId !== user._id) {
+    if (!device || !(await canView(ctx, user, device))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
 
@@ -262,6 +263,14 @@ export const confirmPairing = mutation({
 
     if (Date.now() > request.expiresAt) {
       throw new ConvexError("Pairing code has expired. Generate a new code from the agent.");
+    }
+
+    // Same computer (same secret) already on another account: share it with this account.
+    const ownedElsewhere = await deviceBySecretHash(ctx, request.secretHash);
+    if (ownedElsewhere && ownedElsewhere.userId && ownedElsewhere.userId !== user._id) {
+      await shareDevice(ctx, ownedElsewhere, user._id);
+      await ctx.db.patch(request._id, { status: "confirmed", userId: user._id, deviceId: ownedElsewhere._id });
+      return { success: true, deviceId: ownedElsewhere._id, name: ownedElsewhere.name, os: inferOs(ownedElsewhere), shared: true };
     }
 
     const hostname = request.name ?? (request as any).deviceInfo?.hostname ?? "Monitored-PC";
@@ -370,7 +379,7 @@ export const updateThresholds = mutation({
 
     if (args.deviceId) {
       const dev = await ctx.db.get(args.deviceId);
-      if (!dev || dev.userId !== user._id) {
+      if (!dev || !(await canView(ctx, user, dev))) {
         throw new ConvexError("Unauthorized: device does not belong to session");
       }
     }
@@ -448,7 +457,7 @@ export const resetDeviceThresholds = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     const dev = await ctx.db.get(args.deviceId);
-    if (!dev || dev.userId !== user._id) {
+    if (!dev || !(await canView(ctx, user, dev))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
 
@@ -471,7 +480,7 @@ export const getDiskThresholds = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const dev = await ctx.db.get(args.deviceId);
-    if (!dev || dev.userId !== user._id) {
+    if (!dev || !(await canView(ctx, user, dev))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
     const rows = await ctx.db
@@ -560,7 +569,7 @@ export const getDeviceSummaries = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const device = await ctx.db.get(args.deviceId);
-    if (!device || device.userId !== user._id) {
+    if (!device || !(await canView(ctx, user, device))) {
       throw new ConvexError("Unauthorized: device does not belong to session");
     }
 

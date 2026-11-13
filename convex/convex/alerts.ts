@@ -6,6 +6,7 @@
 // Rows are written with `pushed: false`; FCM delivery is not wired yet.
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { deviceMemberIds } from "./model";
 
 export const DEFAULT_THRESHOLDS = { cpuTempC: 90, gpuTempC: 85, ramPct: 90 };
 // Alert when a drive has less than this % free (FR-42).
@@ -106,8 +107,15 @@ export function breaches(s: SummaryReadings, t: Thresholds): Breach[] {
 
 // Store an alert for each breach, unless the same device + type alerted in the last 15 minutes.
 export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, s: SummaryReadings) {
-  if (!device.userId) return 0; // ownerless devices belong to nobody, so nobody is alerted
-  const userId = device.userId;
+  let raised = 0;
+  // Owner and everyone the computer is shared with, each with their own limits and cooldown.
+  for (const userId of await deviceMemberIds(ctx, device)) {
+    raised += await evaluateFor(ctx, device, userId, s);
+  }
+  return raised;
+}
+
+async function evaluateFor(ctx: MutationCtx, device: Doc<"devices">, userId: Id<"users">, s: SummaryReadings) {
   const now = Date.now();
   let raised = 0;
   for (const b of breaches(s, await thresholdsFor(ctx, userId, device._id))) {
@@ -116,6 +124,7 @@ export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, 
       .withIndex("by_device_type_time", (q) =>
         q.eq("deviceId", device._id).eq("type", b.type).gt("createdAt", now - ALERT_COOLDOWN_MS),
       )
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
     if (recent) continue;
     await ctx.db.insert("alerts", {
@@ -137,6 +146,7 @@ export async function evaluateSummary(ctx: MutationCtx, device: Doc<"devices">, 
       .withIndex("by_device_type_time", (q) =>
         q.eq("deviceId", device._id).eq("type", "disk").gt("createdAt", now - ALERT_COOLDOWN_MS),
       )
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
     if (recent.some((a) => a.drive === d.drive)) continue;
     await ctx.db.insert("alerts", {

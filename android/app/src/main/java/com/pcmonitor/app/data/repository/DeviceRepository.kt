@@ -19,6 +19,10 @@ interface DeviceRepository {
     fun getCriticalDeviceCount(): Flow<Int>
     /** Re-fetch the device list now (pull-to-refresh, home-screen widget). */
     suspend fun refresh()
+    /** Owner only: accounts the computer is shared with. */
+    suspend fun getShares(deviceId: String): Result<List<com.pcmonitor.app.data.model.DeviceShare>>
+    /** Owner only: remove one account's access. */
+    suspend fun removeShare(deviceId: String, userId: String): Result<Unit>
     suspend fun startMockSimulation()
     suspend fun stopMockSimulation()
 }

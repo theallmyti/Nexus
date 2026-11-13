@@ -79,6 +79,8 @@ fun PairingProgressScreen(
     var isDone by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var pairedDeviceName by remember { mutableStateOf("PC") }
+    // True when the computer already had an owner and was shared with this account.
+    var pairedShared by remember { mutableStateOf(false) }
     var pairedDeviceOs by remember { mutableStateOf("Linux") }
     // Set once the code is looked up: the user must see which computer is asking and tap PAIR
     // before it is linked (docs/Security.md §2). A code can arrive from a link on any website.
@@ -140,6 +142,7 @@ fun PairingProgressScreen(
                 errorMessage = "Pairing code not found. Make sure the agent is running and the code hasn't expired (10-min limit)."
             else -> {
                 pairedDeviceName = v.optString("name", pairedDeviceName)
+                pairedShared = v.optBoolean("shared", false)
                 v.optString("os", "").takeIf { it.isNotBlank() }?.let { pairedDeviceOs = it }
                 val detectedOs = displayOs(pairedDeviceOs)
                 deviceRepository.addDevice(
@@ -250,9 +253,10 @@ fun PairingProgressScreen(
 
             Text(
                 text = when {
+                    isDone && pairedShared -> "Shared with you: you can now watch $pairedDeviceName."
                     isDone -> "Device successfully linked!"
                     errorMessage != null -> errorMessage ?: "Pairing failed"
-                    awaitingConfirm -> "Only pair a computer you own and just set up."
+                    awaitingConfirm -> "Only pair a computer you own, or one whose owner gave you its code."
                     else -> "This might take a few seconds..."
                 },
                 fontFamily = PixelFontFamily,

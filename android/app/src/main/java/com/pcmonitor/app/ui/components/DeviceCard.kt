@@ -118,7 +118,7 @@ fun DeviceCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${device.os} · ${device.type.label}",
+                        text = "${device.os} · ${device.type.label}" + if (device.shared) " · Shared with you" else "",
                         fontFamily = ReadableFontFamily,
                         fontSize = 12.sp,
                         color = WhiteCardTextSecondary

@@ -266,7 +266,8 @@ class MockDeviceRepository(
                         hardwareStats = stats,
                         ownerId = activeUserEmail,
                         hasGpu = if (caps?.has("hasNvidiaGpu") == true) caps.optBoolean("hasNvidiaGpu") else null,
-                        hasBattery = if (caps?.has("hasBattery") == true) caps.optBoolean("hasBattery") else null
+                        hasBattery = if (caps?.has("hasBattery") == true) caps.optBoolean("hasBattery") else null,
+                        shared = item.optBoolean("shared", false)
                     )
                     newDevices.add(device.copy(hardwareStats = device.gate(stats)))
                 }
@@ -386,6 +387,46 @@ class MockDeviceRepository(
             else device
         }
     }
+
+    private suspend fun convexCall(kind: String, path: String, args: JSONObject): Result<Any?> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val token = userPreferencesRepository?.getSessionToken()
+                    ?: throw Exception("You're signed out. Sign in again.")
+                val body = JSONObject().apply {
+                    put("path", path)
+                    put("args", args.put("token", token))
+                }
+                val req = Request.Builder()
+                    .url("$CONVEX_BASE_URL/api/$kind")
+                    .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    val env = JSONObject(resp.body?.string() ?: "{}")
+                    if (env.optString("status") != "success") {
+                        throw Exception("Couldn't reach the server. Try again.")
+                    }
+                    env.opt("value")
+                }
+            }
+        }
+
+    override suspend fun getShares(deviceId: String): Result<List<com.pcmonitor.app.data.model.DeviceShare>> =
+        convexCall("query", "devices:getDeviceShares", JSONObject().put("deviceId", deviceId)).map { v ->
+            val arr = v as? JSONArray ?: JSONArray()
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { o ->
+                    com.pcmonitor.app.data.model.DeviceShare(
+                        userId = o.optString("userId"),
+                        name = if (o.isNull("name")) null else o.optString("name"),
+                        email = if (o.isNull("email")) null else o.optString("email")
+                    )
+                }
+            }
+        }
+
+    override suspend fun removeShare(deviceId: String, userId: String): Result<Unit> =
+        convexCall("mutation", "devices:removeDeviceShare", JSONObject().put("deviceId", deviceId).put("userId", userId)).map { }
 
     override suspend fun refresh() {
         // After a cold start (widget worker) the session collector may not have set the user yet.

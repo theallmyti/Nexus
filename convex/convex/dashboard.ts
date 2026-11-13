@@ -5,6 +5,10 @@ import { v, ConvexError } from "convex/values";
 import { LIMITS, isLimited, recordEvent } from "./rateLimit";
 import { LATEST_AGENT_VERSION, isOutdated } from "./versions";
 import {
+  viewableDevice,
+  sharedDevicesOf,
+  shareDevice,
+  leaveDevice,
   deviceBySecretHash,
   ownedDevice,
   pairingByCode,
@@ -24,10 +28,11 @@ export const overview = query({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
     const now = Date.now();
-    const devices = await ctx.db
+    const owned = await ctx.db
       .query("devices")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
+    const devices = [...owned, ...(await sharedDevicesOf(ctx, user._id))];
     const latestList = await Promise.all(
       devices.map((d) =>
         ctx.db
@@ -59,6 +64,8 @@ export const overview = query({
         capabilities: d.capabilities ?? null,
         updateAvailable: isOutdated(d.agentVersion),
         latest,
+        // Shared with this account by its owner (view only: rename/remove-for-all are owner-only).
+        shared: d.userId !== user._id,
       };
     });
     return { now, latestAgentVersion: LATEST_AGENT_VERSION, devices: out };
@@ -79,7 +86,7 @@ export const history = query({
       throw new ConvexError("invalid untilMs");
     }
     const user = await requireUser(ctx, args.token);
-    await ownedDevice(ctx, user, args.deviceId);
+    await viewableDevice(ctx, user, args.deviceId);
     const { untilMs } = args;
     return await ctx.db
       .query("summaries")
@@ -96,7 +103,7 @@ export const setViewer = mutation({
   args: { token: v.string(), deviceId: v.id("devices") },
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
-    await ownedDevice(ctx, user, args.deviceId);
+    await viewableDevice(ctx, user, args.deviceId);
     await ctx.db.patch(args.deviceId, { viewerUntil: Date.now() + VIEWER_WINDOW_MS });
   },
 });
@@ -108,11 +115,11 @@ export const setViewerAll = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
     const until = Date.now() + VIEWER_WINDOW_MS;
-    const devices = await ctx.db
+    const owned = await ctx.db
       .query("devices")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
-    for (const d of devices) {
+    for (const d of [...owned, ...(await sharedDevicesOf(ctx, user._id))]) {
       await ctx.db.patch(d._id, { viewerUntil: until });
     }
   },
@@ -137,7 +144,11 @@ export const removeDevice = mutation({
   args: { token: v.string(), deviceId: v.id("devices") },
   handler: async (ctx, args) => {
     const user = await requireUserAndTouch(ctx, args.token);
-    const device = await ownedDevice(ctx, user, args.deviceId);
+    const device = await viewableDevice(ctx, user, args.deviceId);
+    if (device.userId !== user._id) {
+      await leaveDevice(ctx, device._id, user._id); // shared: only off this account
+      return;
+    }
     await removeDeviceData(ctx, device);
   },
 });
@@ -188,11 +199,13 @@ export const confirmPairing = mutation({
     }
     const now = Date.now();
     const existing = await deviceBySecretHash(ctx, r.secretHash);
-    if (existing) {
-      if (existing.userId && existing.userId !== user._id) {
-        throw new ConvexError("device already paired to another account");
-      }
-    } else {
+    if (existing && existing.userId && existing.userId !== user._id) {
+      // Already someone else's computer: share it with this account instead.
+      await shareDevice(ctx, existing, user._id);
+      await ctx.db.patch(r._id, { status: "confirmed", deviceId: existing._id });
+      return { deviceId: existing._id, name: existing.name, os: existing.os ?? "windows", shared: true };
+    }
+    if (!existing) {
       const userDevices = await ctx.db
         .query("devices")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
