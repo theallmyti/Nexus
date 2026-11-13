@@ -54,6 +54,10 @@ Compression=lzma2
 SolidCompression=yes
 LicenseFile=LEGAL_AGREEMENT.txt
 WizardStyle=modern
+; Nexus theme: pixel-art side image and logo (installer/assets/make_wizard_art.py), 100/150/200 % DPI
+WizardImageFile=assets\wizard-image-100.bmp,assets\wizard-image-150.bmp,assets\wizard-image-200.bmp
+WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-150.bmp,assets\wizard-small-200.bmp
+WizardImageStretch=no
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\nexus.exe
 SetupLogging=yes
@@ -295,8 +299,43 @@ end;
 
 #include "pairing-page.iss"
 
+// Nexus theme, matching the app: navy frame and banner, yellow titles, cream content pages.
+const
+  ThemeNavy = $2E1B0F;    // #0F1B2E (Inno colours are $BBGGRR)
+  ThemeCream = $E7F8FF;   // #FFF8E7
+  ThemeYellow = $15CCFA;  // #FACC15
+  ThemeInk = $23273E;     // #3E2723
+  ThemeMuted = $E1D5CB;   // #CBD5E1
+
+procedure ApplyNexusTheme();
+begin
+  WizardForm.Color := ThemeNavy;
+  // Top banner on inner pages
+  WizardForm.MainPanel.Color := ThemeNavy;
+  WizardForm.PageNameLabel.Font.Color := ThemeYellow;
+  WizardForm.PageNameLabel.Font.Style := [fsBold];
+  WizardForm.PageDescriptionLabel.Font.Color := ThemeMuted;
+  // Content area: cream card with dark ink text (system checkboxes stay readable on it)
+  WizardForm.InnerPage.Color := ThemeCream;
+  // Welcome and Finish pages sit next to the pixel-art image
+  WizardForm.WelcomePage.Color := ThemeNavy;
+  WizardForm.WelcomeLabel1.Font.Color := ThemeYellow;
+  WizardForm.WelcomeLabel2.Font.Color := ThemeMuted;
+  WizardForm.FinishedPage.Color := ThemeNavy;
+  WizardForm.FinishedHeadingLabel.Font.Color := ThemeYellow;
+  WizardForm.FinishedLabel.Font.Color := ThemeMuted;
+  WizardForm.RunList.Color := ThemeNavy;
+  WizardForm.RunList.Font.Color := ThemeMuted;
+  // Licence text box
+  WizardForm.LicenseMemo.Color := $FFFFFF;
+  WizardForm.LicenseMemo.Font.Color := ThemeInk;
+  WizardForm.Bevel.Visible := False;
+  WizardForm.Bevel1.Visible := False;
+end;
+
 procedure InitializeWizard();
 begin
+  ApplyNexusTheme();
   CreatePairingPage(wpInstalling);
 end;
 
