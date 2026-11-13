@@ -360,6 +360,16 @@ fun DeviceDetailsScreen(
                         Spacer(modifier = Modifier.height(14.dp))
                     }
 
+                    // Per-core min/max/averages: tracked for as long as this device is open.
+                    val coreStats = remember(device.id) { CoreTempStats() }
+                    val liveCpu = device.hardwareStats.cpu
+                    LaunchedEffect(liveCpu.coreTemperatures) {
+                        if (liveCpu.coreTemperatures.isNotEmpty()) {
+                            val (cores, _) = groupCores(liveCpu.coreTemperatures, liveCpu.threadUtilizations)
+                            coreStats.update(cores.map { it.temp })
+                        }
+                    }
+
                     // Dynamic tab contents
                     when (viewModel.selectedTab) {
                         DetailTab.OVERVIEW -> {
@@ -373,7 +383,8 @@ fun DeviceDetailsScreen(
                             CpuSection(
                                 cpu = device.hardwareStats.cpu,
                                 isOnline = device.isOnline,
-                                useFahrenheit = state.useFahrenheit
+                                useFahrenheit = state.useFahrenheit,
+                                coreStats = coreStats
                             )
                         }
                         DetailTab.GPU -> {
@@ -734,7 +745,8 @@ private fun CreamBarMetricCard(
 }
 
 @Composable
-private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean) {
+private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean, coreStats: CoreTempStats) {
+    var showThreads by remember { mutableStateOf(false) }
     Column {
         Text(
             text = "CPU",
@@ -781,6 +793,32 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
         } else {
             // Per-core temperatures line up with the load rows when the chip reports them.
             val temps = cpu.coreTemperatures.takeIf { it.size == threads.size }
+            if (temps != null) {
+                val (cores, smt) = groupCores(temps, threads)
+                Text(
+                    text = "Temperature per core",
+                    fontFamily = PixelFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    lineHeight = 16.sp,
+                    color = CreamTextSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                CoreTempTable(cores = cores, smt = smt, stats = coreStats, useFahrenheit = useFahrenheit)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = if (showThreads) "Hide threads" else "Show ${threads.size} threads",
+                    fontFamily = ReadableFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = PixelGreen,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { showThreads = !showThreads }
+                        .padding(vertical = 8.dp)
+                )
+                if (!showThreads) return@Column
+            }
             Text(
                 text = if (temps != null) "Load & temp per CPU (${threads.size})"
                 else "Load per CPU (${threads.size})",
