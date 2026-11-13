@@ -28,7 +28,7 @@ mod update;
 mod usage;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -419,32 +419,53 @@ fn watch_viewer(mut client: ConvexClient, secret_hash: String, viewer_until: Arc
 }
 
 fn print_help() {
-    println!("Nexus Agent v{}", env!("CARGO_PKG_VERSION"));
+    let admin = if cfg!(windows) { "an admin terminal" } else { "sudo" };
+    println!("Nexus agent v{}  -  github.com/theallmyti/Nexus", env!("CARGO_PKG_VERSION"));
     println!();
-    println!("Usage:");
-    println!("  nexus [COMMAND | CONFIG_PATH]");
+    println!("Usage: nexus <command> [options]");
     println!();
-    println!("Commands:");
-    println!("  status         Show current agent service status and live metrics");
-    println!("  pause [MINS]   Pause metrics collection (default: 24h, or specify minutes)");
-    println!("  resume         Resume paused metrics collection");
-    println!("  restart        Restart the background agent service (systemd/Windows)");
-    println!("  pair           Pair this machine with your Nexus dashboard account");
-    println!("  unpair         Remove device secret and unlink from Nexus");
-    println!("  sensors        List all detected hardware sensors (temperatures, clocks)");
-    println!("  update         Check for and install the latest Nexus release");
-    println!("  help, --help   Show this help message");
+    println!("Everyday");
+    println!("  status            Is the agent running? Shows mode, last upload and live readings");
+    println!("  pause [MINUTES]   Stop sending data for a while (default 24 h)");
+    println!("  resume            Start sending data again");
+    println!("  restart           Restart the background service (needs {admin})");
+    println!();
+    println!("Pairing");
+    println!("  pair              Link this computer to your account: shows a QR code and a code");
+    println!("                    to enter in the app. Options: --skip-if-paired");
+    #[cfg(windows)]
+    println!("                    --gui opens the pairing window instead of the terminal");
+    println!("  unpair            Remove this computer from your account");
+    println!();
+    println!("Maintenance");
+    println!("  update            Download and install the newest release (needs {admin})");
+    println!("  sensors           List the temperatures, clocks and per-core readings found here");
+    println!("  version           Print the installed version");
+    println!("  help              Show this list");
     println!();
     #[cfg(windows)]
     {
-        println!("Windows-only commands:");
-        println!("  service        Run as Windows Service (managed by Service Control Manager)");
-        println!("  tray           Launch background system tray icon");
+        println!("Started by Windows (you normally don't run these)");
+        println!("  service           Run as the NexusAgent Windows service");
+        println!("  tray              Show the system-tray icon");
         println!();
     }
-    println!(
-        "If no command is specified, runs as a foreground agent using CONFIG_PATH (default: config.toml)."
-    );
+    println!("Examples");
+    println!("  nexus status");
+    println!("  nexus pause 60          pause for one hour");
+    println!("  nexus pair");
+    println!();
+    println!("With no command, the agent runs in this terminal using a config file path");
+    println!("(default config.toml). Press Ctrl+C to stop.");
+}
+
+/// True for an argument that can only be a mistyped command, not a config file path.
+fn looks_like_unknown_command(arg: &str) -> bool {
+    if arg.starts_with('-') {
+        return true;
+    }
+    let path_like = arg.contains('.') || arg.contains('/') || arg.contains('\\');
+    !path_like && !Path::new(arg).exists()
 }
 
 pub(crate) fn resolve_data_dir() -> PathBuf {
@@ -660,6 +681,10 @@ fn main() {
             print_help();
             return;
         }
+        Some("version") | Some("--version") | Some("-V") => {
+            println!("nexus {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
         // Remove this device from Nexus (run by the uninstaller).
         Some("unpair") => {
             let explicit = std::env::args().nth(2);
@@ -740,6 +765,10 @@ fn main() {
         Some("tray") => {
             tray::run();
             return;
+        }
+        Some(arg) if looks_like_unknown_command(arg) => {
+            eprintln!("Unknown command '{arg}'. Run 'nexus help' to see all commands.");
+            exit(2);
         }
         _ => {}
     }

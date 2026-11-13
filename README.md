@@ -1,8 +1,8 @@
 # Nexus
 
-A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend. An Android app with push alerts is in development.
+A lightweight hardware monitor for a small fleet of personal machines: Windows laptops, a Linux home server and a Raspberry Pi. A small Rust **agent** runs on each machine and reports to a **Convex** cloud backend. The **Android app** shows live readings (CPU, per-core temperatures, GPU, RAM, battery, drives) and sends push alerts.
 
-**Status:** Week 1 (spikes). MVP due 3 Dec 2026.
+**Download:** [GitHub Releases](https://github.com/theallmyti/Nexus/releases): the Windows installer, Linux installers and the Android app.
 
 ---
 
@@ -13,11 +13,12 @@ A lightweight hardware monitor for a small fleet of personal machines: Windows l
 - [How it works](#how-it-works)
 - [Components in detail](#components-in-detail)
 - [Data model](#data-model)
-- [Getting started](#getting-started)
+- [Install](#install)
+- [Commands](#commands)
+- [Development](#development)
 - [Security](#security)
 - [Measured performance](#measured-performance)
 - [Project layout](#project-layout)
-- [Roadmap](#roadmap)
 - [Licence](#licence)
 
 ---
@@ -244,31 +245,100 @@ erDiagram
 
 ---
 
-## Getting started
+## Install
 
-### Installation & Device Pairing
+Get the files from the newest release on [GitHub Releases](https://github.com/theallmyti/Nexus/releases). Releases are marked *Pre-release*; take the top one.
 
-Install the agent on your computers and link them to your account:
+### 1. Phone app (Android)
 
-#### Windows
-1. Run `dist\nexus-setup-0.2.5.exe` (or build from `installer\nexus.iss`).
-2. The setup wizard displays a pairing QR code and 6-character code.
-3. **If you have the Nexus app:** Scan the QR code using Google Lens, your phone camera, or the in-app scanner to pair instantly.
-4. **If you don't have the app yet:** Scanning the QR code automatically opens the download page with a direct link to the latest [Nexus Android APK on GitHub Releases](https://github.com/theallmyti/Nexus/releases/latest). Install the app, sign in, and confirm the code.
+1. Download `nexus-app-<version>.apk` on your phone.
+2. Open it. If Android asks, allow your browser or file manager to *install unknown apps*.
+3. Open **Nexus**, create an account or sign in.
 
-#### Linux (Ubuntu, Debian, Fedora, Arch, Raspberry Pi, etc.)
-1. Download the universal static installer for your architecture from `dist/`:
-   ```sh
-   # x86-64:
-   sudo sh nexus-0.2.5-linux-x86_64.run
+### 2. Windows (10 and 11, 64-bit)
 
-   # ARM64 / Raspberry Pi:
-   sudo sh nexus-0.2.5-linux-aarch64.run
-   ```
-2. Scan the terminal QR code with your phone camera or Google Lens to pair, or type the 6-character code into the app.
-3. To uninstall at any time: `sudo sh /opt/nexus/uninstall.sh` (or `sudo sh dist/nexus-uninstall.sh`).
+1. Download and run `nexus-setup-<version>.exe`. Windows asks for administrator approval.
+2. Tick **I agree** and press **Install**. **Customize location and options** lets you choose:
+   - **Show CPU temperature**: installs the signed PawnIO driver. Needed for CPU and per-core temperatures; without it the agent still reports load, clocks, RAM, GPU, battery and drives.
+   - **Start in the system tray on login**: the tray icon (about 15 MB of RAM).
+   - **Add Nexus to PATH**: lets you type `nexus` in any terminal.
+3. When the pairing screen shows a QR code and a 6-character code, scan the QR code with the app (or your phone camera), or type the code in the app under **Add Device**.
+4. Done. The agent runs as the `NexusAgent` Windows service and starts with Windows.
 
-### Agent Development
+**Upgrade:** run the newer installer; it upgrades in place and keeps the pairing.
+**Pair again later:** right-click the tray icon, then **Pair Device...**, or run `nexus pair` in an admin terminal.
+**Uninstall:** *Settings → Apps → Nexus Agent → Uninstall* (or `nexus-uninstall.exe`). This also removes the computer from your account.
+
+### 3. Linux (Ubuntu, Debian, Fedora, Arch, Raspberry Pi OS, ...)
+
+Needs systemd. Pick the file for your processor (`uname -m` prints it):
+
+```sh
+# x86-64 PCs and servers
+curl -LO https://github.com/theallmyti/Nexus/releases/download/v0.2.5/nexus-0.2.5-linux-x86_64.run
+sudo sh nexus-0.2.5-linux-x86_64.run
+
+# Raspberry Pi 3/4/5 and other ARM64 (aarch64)
+curl -LO https://github.com/theallmyti/Nexus/releases/download/v0.2.5/nexus-0.2.5-linux-aarch64.run
+sudo sh nexus-0.2.5-linux-aarch64.run
+```
+
+The installer copies the agent to `/opt/nexus`, links the `nexus` command into `/usr/local/bin`, writes `/etc/nexus/config.toml`, shows a QR code and a code in the terminal to pair, and starts the `nexus` systemd service.
+
+```sh
+systemctl status nexus          # is it running?
+journalctl -u nexus -f          # follow the agent's log
+sudo systemctl restart nexus    # restart (same as: sudo nexus restart)
+```
+
+**Upgrade:** run the newer `.run` file the same way.
+**Uninstall:** `sudo sh /opt/nexus/uninstall.sh`. This also removes the computer from your account.
+
+### Checksums
+
+Every release has a `SHA256SUMS` file. To check a download:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing        # Linux
+```
+```powershell
+Get-FileHash .\nexus-setup-0.2.5.exe -Algorithm SHA256   # Windows: compare with SHA256SUMS
+```
+
+---
+
+## Commands
+
+Run `nexus help` at any time to see this list on the computer itself. On Windows use an admin terminal for `restart`, `pair`, `unpair` and `update`; on Linux put `sudo` in front of them.
+
+| Command | What it does |
+|---|---|
+| `nexus status` | Is the agent running? Shows the mode, last upload and live readings |
+| `nexus pause [MINUTES]` | Stop sending data for a while (default 24 hours) |
+| `nexus resume` | Start sending data again |
+| `nexus restart` | Restart the background service |
+| `nexus pair` | Link this computer to your account (QR code + code). `--skip-if-paired` does nothing if already linked; on Windows `--gui` opens the pairing window |
+| `nexus unpair` | Remove this computer from your account |
+| `nexus update` | Download and install the newest release |
+| `nexus sensors` | List the temperatures, clocks and per-core readings the agent can see |
+| `nexus version` | Print the installed version |
+| `nexus help` | Show all commands |
+
+Examples:
+
+```sh
+nexus status
+nexus pause 60      # pause for one hour
+sudo nexus pair     # Linux; on Windows run "nexus pair" in an admin terminal
+```
+
+On Windows, `nexus` works in any terminal if you chose **Add Nexus to PATH** during setup; otherwise use the full path, `"C:\Program Files\Nexus\nexus.exe"`. An unknown command prints a hint to run `nexus help`.
+
+---
+
+## Development
+
+### Agent
 
 Requires a Rust toolchain with edition 2024 support (Rust 1.85 or newer).
 
@@ -313,7 +383,7 @@ npm run test       # Vitest (48 unit & integration tests)
 
 ## Measured performance
 
-Measured across real hardware targets per [`Testing.md:42`](file:///D:/projects/monitoring-system/docs/Testing.md) and [`Roadmap.md:101`](file:///D:/projects/monitoring-system/docs/Roadmap.md):
+Measured across real hardware targets per [`Testing.md:42`](docs/Testing.md) and [`Roadmap.md:101`](docs/Roadmap.md):
 
 | Metric | Target | Windows 11 Laptop (x64) | Linux Server (x64) | Raspberry Pi 4 (ARM64) | Status |
 |---|---|---|---|---|---|
@@ -342,20 +412,6 @@ Measured across real hardware targets per [`Testing.md:42`](file:///D:/projects/
 ├── LICENSE
 └── README.md
 ```
-
----
-
-## Roadmap
-
-| Week | Dates | Focus |
-|---|---|---|
-| 1 | 3 – 9 Nov | Setup, learning and spikes |
-| 2 | 10 – 16 Nov | Vertical slice: sign-in, pairing, live view |
-| 3 | 17 – 23 Nov | Full MVP data and multiple devices |
-| 4 | 24 – 30 Nov | Alerts (FCM push), battery, backups |
-| — | 1 – 3 Dec | Freeze and release |
-
-Still to come: email and password accounts, QR pairing, the Android app, threshold alerts with FCM push, offline detection, a daily alert-path canary, nightly backups and agent auto-update from GitHub Releases.
 
 ---
 
