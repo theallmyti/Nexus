@@ -14,7 +14,7 @@
 ; removes PawnIO (silently if this installer added it, otherwise after asking), deletes all files.
 
 #define AppName "Nexus Agent"
-#define AppVersion "0.2.3"
+#define AppVersion "0.2.4"
 #define ServiceName "NexusAgent"
 ; The Convex URL is kept out of the repo: installer/convex-url.txt (git-ignored, one line).
 ; Test builds: ISCC /DChannel=dev reads installer/convex-url-dev.txt and adds "-dev" to the name.
@@ -88,6 +88,8 @@ Source: "..\docs\COOKIE_POLICY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 ; Signed PawnIO modules (LGPL-2.1, github.com/namazso/PawnIO.Modules), fetched by fetch-pawnio.ps1
 Source: "vendor\pawnio\AMDFamily17.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion
 Source: "vendor\pawnio\IntelMSR.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion
+; Ryzen SMU metrics table: per-core temperatures on AMD laptops/desktops (Renoir, Cezanne, ...)
+Source: "vendor\pawnio\RyzenSMU.bin"; DestDir: "{app}\pawnio"; Flags: ignoreversion
 Source: "vendor\pawnio\COPYING"; DestDir: "{app}\pawnio"; DestName: "COPYING-PawnIO-Modules.txt"
 ; Official signed PawnIO driver installer (github.com/namazso/PawnIO.Setup)
 Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flags: deleteafterinstall

@@ -90,7 +90,12 @@ fn print_sensors() {
     }
     let components = Components::new_with_refreshed_list().expect("failed to read sensors");
     let logical = sys.cpus().len();
-    match collectors::per_cpu_temps(&components, logical) {
+    // Driver path first (Intel MSR / Ryzen SMU via PawnIO; needs an admin terminal), then Linux.
+    let driver = cputemp::CpuTemp::open();
+    match driver
+        .read_cores(logical)
+        .or_else(|| collectors::per_cpu_temps(&components, logical))
+    {
         Some(t) => say!("{:<40} {t:?}", "per-core temps (°C)"),
         None => say!("{:<40} not reported by this chip/OS", "per-core temps"),
     }

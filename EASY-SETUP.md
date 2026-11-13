@@ -6,8 +6,8 @@ This guide covers running and pairing the Nexus PC Monitoring Agent.
 
 ## Quick Start (Automated Installer)
 
-1. **Download**: Obtain `nexus-setup-0.2.3.exe` from GitHub Releases.
-2. **Run**: Double-click `nexus-setup-0.2.3.exe` to automatically install and launch the agent.
+1. **Download**: Obtain `nexus-setup-0.2.4.exe` from GitHub Releases.
+2. **Run**: Double-click `nexus-setup-0.2.4.exe` to automatically install and launch the agent.
 3. **Pair**:
    - The agent displays a 6-character pairing code in the console / system tray.
    - Open the **Nexus Android App**.

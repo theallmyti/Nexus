@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 
 [dependencies]
@@ -30,6 +30,7 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
     "Win32_System_Performance",
+    "Win32_Security",
 ] }
 
 [target."cfg(target_os = \"linux\")".dependencies]
