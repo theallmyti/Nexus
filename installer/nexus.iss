@@ -57,9 +57,11 @@ DisableWelcomePage=no
 DisableReadyPage=yes
 WizardStyle=modern
 ; Nexus theme: pixel-art side image and logo (installer/assets/make_wizard_art.py), 100/150/200 % DPI
-WizardImageFile=assets\wizard-image-100.bmp,assets\wizard-image-150.bmp,assets\wizard-image-200.bmp
-WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-150.bmp,assets\wizard-small-200.bmp
-WizardImageStretch=no
+WizardImageFile=assets\wizard-image-100.bmp,assets\wizard-image-125.bmp,assets\wizard-image-150.bmp,assets\wizard-image-175.bmp,assets\wizard-image-200.bmp
+WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-125.bmp,assets\wizard-small-150.bmp,assets\wizard-small-175.bmp,assets\wizard-small-200.bmp
+; Fill the whole side panel (no white frame); any leftover edge is navy, not white.
+WizardImageStretch=yes
+WizardImageBackColor=$2E1B0F
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\nexus.exe
 SetupLogging=yes
@@ -77,6 +79,8 @@ Source: "LEGAL_AGREEMENT.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "LEGAL_AGREEMENT.rtf"; DestDir: "{app}\docs"; Flags: ignoreversion
 ; Opened from the first screen before anything is installed.
 Source: "LEGAL_AGREEMENT.rtf"; Flags: dontcopy
+; Welcome/Finish animation frames (man waves, cat blinks), drawn by assets\make_wizard_art.py
+Source: "assets\anim-*.bmp"; Flags: dontcopy
 Source: "..\LEGAL.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\docs\PRIVACY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\docs\TERMS.md"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -95,6 +99,7 @@ FinishedHeadingLabel=Nexus is ready
 FinishedLabel=The agent is running in the background. Open the Nexus app on your phone to see this computer.
 FinishedLabelNoIcons=The agent is running in the background. Open the Nexus app on your phone to see this computer.
 ClickFinish=
+ClickNext=
 SelectDirLabel3=Nexus will be installed in this folder.
 SelectDirBrowseLabel=
 SelectTasksLabel2=Choose what Nexus should set up:
@@ -462,10 +467,61 @@ begin
     Result := not Customize;
 end;
 
+// --- Welcome / Finish animation ------------------------------------------------------------
+// Only the patch with the man and the cat changes, so the frames are tiny (34x18 art pixels).
+// They sit exactly over that patch of the side image and are scaled up without smoothing.
+const
+  AnimFrameCount = 8;
+  ArtW = 41;      // art grid of the side image
+  ArtH = 78.5;    // visible rows after cropping
+  BoxX = 0; BoxY = 60; BoxW = 34; BoxH = 18;
+var
+  AnimWelcome, AnimFinish: TBitmapImage;
+  AnimTimer: LongWord;
+  AnimFrame: Integer;
+
+function CreateAnim(Host: TBitmapImage): TBitmapImage;
+begin
+  Result := TBitmapImage.Create(WizardForm);
+  Result.Parent := Host.Parent;
+  Result.Stretch := True;
+  Result.Left := Host.Left + Round(BoxX * Host.Width / ArtW);
+  Result.Top := Host.Top + Round(BoxY * Host.Height / ArtH);
+  Result.Width := Round(BoxW * Host.Width / ArtW);
+  Result.Height := Host.Top + Round((BoxY + BoxH) * Host.Height / ArtH) - Result.Top;
+  Result.BringToFront;
+end;
+
+procedure AnimTick(Wnd, Msg, IdEvent, Time: LongWord);
+var
+  Path: String;
+begin
+  AnimFrame := (AnimFrame + 1) mod AnimFrameCount;
+  Path := ExpandConstant('{tmp}\anim-' + IntToStr(AnimFrame) + '.bmp');
+  if (WizardForm.CurPageID = wpWelcome) then
+    AnimWelcome.Bitmap.LoadFromFile(Path)
+  else if (WizardForm.CurPageID = wpFinished) then
+    AnimFinish.Bitmap.LoadFromFile(Path);
+end;
+
+procedure StartAnimation();
+var
+  I: Integer;
+begin
+  for I := 0 to AnimFrameCount - 1 do
+    ExtractTemporaryFile('anim-' + IntToStr(I) + '.bmp');
+  AnimWelcome := CreateAnim(WizardForm.WizardBitmapImage);
+  AnimFinish := CreateAnim(WizardForm.WizardBitmapImage2);
+  AnimWelcome.Bitmap.LoadFromFile(ExpandConstant('{tmp}\anim-0.bmp'));
+  AnimFinish.Bitmap.LoadFromFile(ExpandConstant('{tmp}\anim-0.bmp'));
+  AnimTimer := SetTimer(0, 0, 200, CreateCallback(@AnimTick));
+end;
+
 procedure InitializeWizard();
 begin
   ApplyNexusTheme();
   BuildWelcome();
+  StartAnimation();
   CreatePairingPage(wpInstalling);
 end;
 
@@ -497,6 +553,8 @@ end;
 
 procedure DeinitializeSetup();
 begin
+  if AnimTimer <> 0 then
+    KillTimer(0, AnimTimer);
   StopPairing();
 end;
 
