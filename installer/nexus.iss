@@ -52,7 +52,9 @@ OutputDir=..\dist
 OutputBaseFilename=nexus-setup-{#AppVersion}{#OutSuffix}
 Compression=lzma2
 SolidCompression=yes
-LicenseFile=LEGAL_AGREEMENT.txt
+; No licence page: consent is a checkbox on the first screen (links open the full documents).
+DisableWelcomePage=no
+DisableReadyPage=yes
 WizardStyle=modern
 ; Nexus theme: pixel-art side image and logo (installer/assets/make_wizard_art.py), 100/150/200 % DPI
 WizardImageFile=assets\wizard-image-100.bmp,assets\wizard-image-150.bmp,assets\wizard-image-200.bmp
@@ -72,6 +74,9 @@ Name: "addtopath"; Description: "Add Nexus to system PATH (allows running 'nexus
 Source: "..\agent\target\release\nexus.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
 Source: "LEGAL_AGREEMENT.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "LEGAL_AGREEMENT.rtf"; DestDir: "{app}\docs"; Flags: ignoreversion
+; Opened from the first screen before anything is installed.
+Source: "LEGAL_AGREEMENT.rtf"; Flags: dontcopy
 Source: "..\LEGAL.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\docs\PRIVACY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\docs\TERMS.md"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -82,6 +87,17 @@ Source: "vendor\pawnio\IntelMSR.bin"; DestDir: "{app}\pawnio"; Flags: ignorevers
 Source: "vendor\pawnio\COPYING"; DestDir: "{app}\pawnio"; DestName: "COPYING-PawnIO-Modules.txt"
 ; Official signed PawnIO driver installer (github.com/namazso/PawnIO.Setup)
 Source: "vendor\pawnio\PawnIO_setup.exe"; DestDir: "{tmp}"; Tasks: cputemp; Flags: deleteafterinstall
+
+[Messages]
+WelcomeLabel1=Install Nexus
+WelcomeLabel2=Keep an eye on this computer's temperatures, memory and alerts from your phone.%n%nNexus runs quietly in the background and uses very little memory.
+FinishedHeadingLabel=Nexus is ready
+FinishedLabel=The agent is running in the background. Open the Nexus app on your phone to see this computer.
+FinishedLabelNoIcons=The agent is running in the background. Open the Nexus app on your phone to see this computer.
+ClickFinish=
+SelectDirLabel3=Nexus will be installed in this folder.
+SelectDirBrowseLabel=
+SelectTasksLabel2=Choose what Nexus should set up:
 
 [Icons]
 Name: "{group}\Uninstall Nexus Agent"; Filename: "{uninstallexe}"
@@ -326,21 +342,143 @@ begin
   WizardForm.FinishedLabel.Font.Color := ThemeMuted;
   WizardForm.RunList.Color := ThemeNavy;
   WizardForm.RunList.Font.Color := ThemeMuted;
-  // Licence text box
-  WizardForm.LicenseMemo.Color := $FFFFFF;
-  WizardForm.LicenseMemo.Font.Color := ThemeInk;
+  WizardForm.WelcomeLabel1.Font.Size := 18;
+  WizardForm.WelcomeLabel1.Font.Style := [fsBold];
+  WizardForm.FinishedHeadingLabel.Font.Size := 18;
   WizardForm.Bevel.Visible := False;
   WizardForm.Bevel1.Visible := False;
+end;
+
+// --- First screen: one decision ----------------------------------------------------------
+// Agree (checkbox) and Install. Location and options stay behind "Customize", so most people
+// see Welcome -> Installing -> Pair your phone -> Done.
+var
+  AgreeBox: TNewCheckBox;
+  Customize: Boolean;
+
+procedure OpenTarget(Target: String);
+var
+  Code: Integer;
+begin
+  ShellExec('open', Target, '', '', SW_SHOWNORMAL, ewNoWait, Code);
+end;
+
+procedure LicenseClick(Sender: TObject);
+begin
+  ExtractTemporaryFile('LEGAL_AGREEMENT.rtf');
+  OpenTarget(ExpandConstant('{tmp}\LEGAL_AGREEMENT.rtf'));
+end;
+
+procedure TermsClick(Sender: TObject);
+begin
+  OpenTarget('https://github.com/theallmyti/Nexus/blob/main/docs/TERMS.md');
+end;
+
+procedure PrivacyClick(Sender: TObject);
+begin
+  OpenTarget('https://github.com/theallmyti/Nexus/blob/main/docs/PRIVACY.md');
+end;
+
+procedure AgreeChanged(Sender: TObject);
+begin
+  WizardForm.NextButton.Enabled := AgreeBox.Checked;
+end;
+
+procedure AgreeLabelClick(Sender: TObject);
+begin
+  AgreeBox.Checked := not AgreeBox.Checked;
+end;
+
+procedure CustomizeClick(Sender: TObject);
+begin
+  if not AgreeBox.Checked then
+  begin
+    MsgBox('Please agree to the licence agreement, terms and privacy policy first.', mbInformation, MB_OK);
+    Exit;
+  end;
+  Customize := True;
+  WizardForm.NextButton.OnClick(WizardForm.NextButton);
+end;
+
+// A small text link in the theme's yellow; returns its right edge so links can sit in a row.
+function AddLink(Caption: String; X, Y: Integer; Handler: TNotifyEvent): Integer;
+var
+  L: TNewStaticText;
+begin
+  L := TNewStaticText.Create(WizardForm);
+  L.Parent := WizardForm.WelcomePage;
+  L.Caption := Caption;
+  L.Left := X;
+  L.Top := Y;
+  L.Cursor := crHand;
+  L.Font.Color := ThemeYellow;
+  L.Font.Style := [fsUnderline];
+  L.OnClick := Handler;
+  Result := L.Left + L.Width;
+end;
+
+procedure BuildWelcome();
+var
+  Lbl: TNewStaticText;
+  Top, X: Integer;
+begin
+  WizardForm.WelcomeLabel2.AutoSize := True;
+  Top := WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + ScaleY(24);
+
+  // Checkbox without caption (Windows draws checkbox text in black, unreadable on navy) + own label.
+  AgreeBox := TNewCheckBox.Create(WizardForm);
+  AgreeBox.Parent := WizardForm.WelcomePage;
+  AgreeBox.Left := WizardForm.WelcomeLabel2.Left;
+  AgreeBox.Top := Top + ScaleY(1);
+  AgreeBox.Width := ScaleX(17);
+  AgreeBox.Height := ScaleY(17);
+  AgreeBox.OnClick := @AgreeChanged;
+
+  Lbl := TNewStaticText.Create(WizardForm);
+  Lbl.Parent := WizardForm.WelcomePage;
+  Lbl.Left := AgreeBox.Left + ScaleX(24);
+  Lbl.Top := Top;
+  Lbl.Width := WizardForm.WelcomeLabel2.Width - ScaleX(24);
+  Lbl.WordWrap := True;
+  Lbl.Caption := 'I agree to the Nexus licence agreement, terms of service and privacy policy.';
+  Lbl.Font.Color := ThemeMuted;
+  Lbl.Cursor := crHand;
+  Lbl.OnClick := @AgreeLabelClick;
+
+  Top := Lbl.Top + Lbl.Height + ScaleY(6);
+  X := AddLink('Licence agreement', Lbl.Left, Top, @LicenseClick) + ScaleX(14);
+  X := AddLink('Terms', X, Top, @TermsClick) + ScaleX(14);
+  AddLink('Privacy', X, Top, @PrivacyClick);
+
+  // Bottom of the page: options for people who want them.
+  AddLink('Customize location and options', WizardForm.WelcomeLabel2.Left,
+    WizardForm.WelcomePage.Height - ScaleY(28), @CustomizeClick);
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (PageID = wpSelectDir) or (PageID = wpSelectTasks) then
+    Result := not Customize;
 end;
 
 procedure InitializeWizard();
 begin
   ApplyNexusTheme();
+  BuildWelcome();
   CreatePairingPage(wpInstalling);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  // The step that starts installing says so.
+  if CurPageID = wpWelcome then
+  begin
+    WizardForm.NextButton.Caption := 'Install';
+    WizardForm.NextButton.Enabled := AgreeBox.Checked;
+  end
+  else if CurPageID = wpSelectTasks then
+    WizardForm.NextButton.Caption := 'Install';
   if CurPageID = PairPage.ID then
     StartPairing(ExpandConstant('{app}\nexus.exe'), PairDir(), DataDir() + '\config.toml');
 end;
