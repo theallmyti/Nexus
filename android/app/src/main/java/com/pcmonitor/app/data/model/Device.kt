@@ -10,8 +10,23 @@ data class Device(
     val isOnline: Boolean = true,
     val lastSeen: Long = System.currentTimeMillis(),
     val hardwareStats: HardwareStats = HardwareStats(),
-    val ownerId: String = ""
-)
+    val ownerId: String = "",
+    // From the agent's capabilities at registration. null = unknown (older agent), so trust live data.
+    val hasGpu: Boolean? = null,
+    val hasBattery: Boolean? = null
+) {
+    /** Drops GPU/battery data for hardware the agent said this device doesn't have. */
+    fun gate(stats: HardwareStats): HardwareStats = stats.copy(
+        gpu = if (hasGpu == false) null else stats.gpu,
+        battery = if (hasBattery == false) null else stats.battery
+    )
+}
+
+/** RAM/VRAM sizes with one decimal, so a 15.7 GB machine isn't shown as "15 GB". */
+fun formatGb(mb: Long): String {
+    val gb = mb / 1024.0
+    return if (gb >= 100) "${gb.toInt()} GB" else String.format(java.util.Locale.US, "%.1f GB", gb)
+}
 
 enum class DeviceType(val label: String) {
     LAPTOP("Laptop"),
@@ -78,7 +93,7 @@ data class RamStats(
     val swapUsedMb: Long = 0,
     val swapTotalMb: Long = 0,
     val speedMhz: Int = 0,
-    val type: String = "DDR4",
+    val type: String = "",
     val topProcesses: List<ProcessInfo> = emptyList()
 ) {
     val usagePercent: Float
@@ -94,7 +109,7 @@ data class ProcessInfo(
 data class BatteryStats(
     val percentage: Int = 0,
     val isCharging: Boolean = false,
-    val health: String = "Good",
+    val health: String = "",
     val healthPercent: Int = 100,
     val chargeCycles: Int = 0,
     val powerRateWatts: Float = 0f
@@ -129,3 +144,36 @@ enum class BootEventType {
     BOOT, SLEEP, WAKE, SHUTDOWN
 }
 
+
+/**
+ * The worst live problem on this device, as a short label for its card ("CPU 91°C"), or null.
+ * Same limits as Home's "Critical" counter so the two never disagree.
+ */
+fun Device.problem(): String? {
+    if (!isOnline) return null
+    val s = hardwareStats
+    val cpu = s.cpu.averageTemperature
+    val gpu = s.gpu?.temperature ?: 0f
+    val ram = s.ram.usagePercent
+    val battery = s.battery
+    return when {
+        cpu >= 85f -> "CPU ${cpu.toInt()}°C"
+        gpu >= 80f -> "GPU ${gpu.toInt()}°C"
+        ram >= 90f -> "RAM ${ram.toInt()}%"
+        battery != null && !battery.isCharging && battery.percentage <= 15 -> "Battery ${battery.percentage}%"
+        else -> null
+    }
+}
+
+/** "just now" / "12s ago" / "5m ago" for a card's freshness line. */
+fun ageLabel(sinceMs: Long, now: Long = System.currentTimeMillis()): String {
+    if (sinceMs <= 0L) return "never"
+    val sec = ((now - sinceMs) / 1000).coerceAtLeast(0)
+    return when {
+        sec < 5 -> "just now"
+        sec < 60 -> "${sec}s ago"
+        sec < 3600 -> "${sec / 60}m ago"
+        sec < 86400 -> "${sec / 3600}h ago"
+        else -> "${sec / 86400}d ago"
+    }
+}

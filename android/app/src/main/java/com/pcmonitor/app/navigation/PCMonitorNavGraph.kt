@@ -334,6 +334,7 @@ private fun MainContainerScreen(
     rootNavController: NavController
 ) {
     var selectedTab by remember { mutableStateOf(BottomNavTab.Home) }
+    var showProfileDialog by remember { mutableStateOf(false) }
 
     // Shared / persistent view models across the main tabs
     val homeViewModel = viewModel {
@@ -349,8 +350,15 @@ private fun MainContainerScreen(
         SettingsViewModel(app.authRepository, app.userPreferencesRepository, app.deviceRepository)
     }
 
-    val unreadAlertsCount by app.alertRepository.alerts.collectAsState()
-    val unreadCount = unreadAlertsCount.count { !it.isRead }
+    val allAlerts by app.alertRepository.alerts.collectAsState()
+    val alertsLastSeen by com.pcmonitor.app.notification.AlertsSeen.lastSeen.collectAsState()
+    val navContext = androidx.compose.ui.platform.LocalContext.current
+    // Being on the Alerts tab counts as having seen everything that arrives while there.
+    LaunchedEffect(selectedTab, allAlerts.size) {
+        if (selectedTab == BottomNavTab.Alerts) com.pcmonitor.app.notification.AlertsSeen.markSeen(navContext)
+    }
+    val hasNewAlerts = selectedTab != BottomNavTab.Alerts &&
+        com.pcmonitor.app.notification.AlertsSeen.hasNew(allAlerts, alertsLastSeen)
 
     // Session expired or rejected by the server (the device repository clears it): back to login.
     val loggedIn by app.userPreferencesRepository.isLoggedIn.collectAsState(initial = true)
@@ -368,7 +376,7 @@ private fun MainContainerScreen(
             RetroBottomNavBar(
                 selectedTab = selectedTab,
                 onTabSelected = { selectedTab = it },
-                alertBadgeCount = unreadCount
+                alertBadgeCount = if (hasNewAlerts) 1 else 0
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -386,17 +394,18 @@ private fun MainContainerScreen(
                         onDeviceClick = { deviceId ->
                             rootNavController.navigate(Screen.DeviceDetails.createRoute(deviceId))
                         },
-                        onViewAllDevicesClick = {
-                            selectedTab = BottomNavTab.Devices
-                        },
                         onAddDeviceClick = {
                             rootNavController.navigate(Screen.AddDevice.route)
+                        },
+                        onOpenThresholds = {
+                            rootNavController.navigate(Screen.ThresholdSettings.createRoute())
                         },
                         onAlertsClick = {
                             selectedTab = BottomNavTab.Alerts
                         },
                         onProfileClick = {
-                            selectedTab = BottomNavTab.Settings
+                            settingsViewModel.openProfile()
+                            showProfileDialog = true
                         },
                         onAlertClick = { alertId ->
                             rootNavController.navigate(Screen.AlertDetail.createRoute(alertId))
@@ -442,5 +451,11 @@ private fun MainContainerScreen(
             }
         }
     }
-}
 
+    if (showProfileDialog) {
+        com.pcmonitor.app.ui.screens.settings.ProfileDialog(
+            viewModel = settingsViewModel,
+            onDismiss = { showProfileDialog = false }
+        )
+    }
+}

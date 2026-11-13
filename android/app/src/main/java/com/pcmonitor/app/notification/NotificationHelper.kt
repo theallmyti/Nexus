@@ -78,6 +78,10 @@ object NotificationHelper {
         if (!canPostNotifications(context)) {
             return false
         }
+        // Snoozed device or quiet hours: the alert still lands in the Alerts tab, just no buzz.
+        if (AlertSnooze.isMuted(context, deviceId)) {
+            return false
+        }
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
@@ -119,22 +120,14 @@ fun RetroBottomNavBar(
 
                         // Alert notification badge
                         if (tab == BottomNavTab.Alerts && alertBadgeCount > 0) {
+                            // A plain dot: "something new", without a number to read.
                             Box(
                                 modifier = Modifier
-                                    .offset(x = 8.dp, y = (-4).dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .offset(x = 2.dp, y = (-1).dp)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
                                     .background(CriticalRed)
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = if (alertBadgeCount > 99) "99+" else alertBadgeCount.toString(),
-                                    color = TextWhite,
-                                    fontSize = 9.sp,
-                                    fontFamily = ReadableFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                            )
                         }
                     }
 

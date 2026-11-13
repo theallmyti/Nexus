@@ -33,6 +33,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.ui.components.PixelCat
+import com.pcmonitor.app.ui.components.AnimatedCat
+import com.pcmonitor.app.ui.components.PixelLiveScene
+import com.pcmonitor.app.ui.components.SkyPhase
+import com.pcmonitor.app.ui.components.WavingCharacter
+import com.pcmonitor.app.ui.components.skyPhase
+import androidx.compose.runtime.remember
 import com.pcmonitor.app.ui.components.AppLogo
 import com.pcmonitor.app.ui.components.PixelCharacter
 import com.pcmonitor.app.ui.components.PixelMountainScene
@@ -51,7 +57,14 @@ fun SplashScreen(
 ) {
     val destination by viewModel.destination.collectAsState()
 
+    // Let the hello-wave play: stay at least ~1.6 s before moving on.
+    val shownAt = remember { System.currentTimeMillis() }
+    val phase = remember { skyPhase() }
     LaunchedEffect(destination) {
+        if (destination !is SplashDestination.Loading) {
+            val wait = 1_600L - (System.currentTimeMillis() - shownAt)
+            if (wait > 0) kotlinx.coroutines.delay(wait)
+        }
         when (destination) {
             is SplashDestination.Onboarding -> onNavigateToOnboarding()
             is SplashDestination.Login -> onNavigateToLogin()
@@ -76,7 +89,7 @@ fun SplashScreen(
             .fillMaxSize()
     ) {
         // Fullscreen Pixel Daytime Landscape (Mountains, forest, lake, meadow)
-        PixelMountainScene(
+        PixelLiveScene(
             modifier = Modifier.fillMaxSize()
         )
 
@@ -107,7 +120,8 @@ fun SplashScreen(
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
-                color = Color(0xFF0F1B2E),
+                // Dark text on a day sky, light text once the sky is dark.
+                color = if (phase == SkyPhase.DAY) Color(0xFF0F1B2E) else Color(0xFFF5EBD7),
                 textAlign = TextAlign.Center,
                 lineHeight = 18.sp
             )
@@ -122,8 +136,8 @@ fun SplashScreen(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.Start
             ) {
-                PixelCharacter(size = 64.dp)
-                PixelCat(size = 40.dp, modifier = Modifier.offset(x = 10.dp, y = 2.dp))
+                WavingCharacter(size = 64.dp, phase = phase)
+                AnimatedCat(size = 40.dp, modifier = Modifier.offset(x = 10.dp, y = 2.dp))
             }
 
             // Pulsing loading dots

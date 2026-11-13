@@ -15,6 +15,8 @@ pub const AMD_SMN_TEMP: u64 = 0x0005_9800;
 /// Intel: IA32_TEMPERATURE_TARGET (TjMax) and IA32_PACKAGE_THERM_STATUS.
 pub const INTEL_MSR_TEMP_TARGET: u64 = 0x1A2;
 pub const INTEL_MSR_PACKAGE_THERM_STATUS: u64 = 0x1B1;
+/// Intel: IA32_THERM_STATUS, the temperature of the core the reading thread runs on.
+pub const INTEL_MSR_THERM_STATUS: u64 = 0x19C;
 
 /// AMD: bits 31:21 hold the temperature in 1/8 °C; bit 19 selects the −49 °C range.
 pub fn amd_temp(raw: u64) -> f64 {
@@ -67,6 +69,18 @@ impl CpuTemp {
         return self.inner.as_ref().and_then(imp::Reader::read);
         #[cfg(not(windows))]
         None
+    }
+
+    /// One temperature per logical processor (hyper-threads share their core's value).
+    /// Intel only: AMD Zen exposes one die temperature, not per-core sensors.
+    pub fn read_cores(&self, logical: usize) -> Option<Vec<f64>> {
+        #[cfg(windows)]
+        return self.inner.as_ref().and_then(|r| r.read_cores(logical));
+        #[cfg(not(windows))]
+        {
+            let _ = logical;
+            None
+        }
     }
 }
 
@@ -242,6 +256,46 @@ mod imp {
             };
             // FR-28: impossible values are dropped.
             (0.0..=125.0).contains(&t).then_some(t)
+        }
+    }
+
+    impl Reader {
+        /// Pins this thread to each logical processor in turn and reads that core's thermal
+        /// status MSR, then restores the thread's previous affinity. Up to 64 processors
+        /// (one processor group), which covers consumer CPUs.
+        pub fn read_cores(&self, logical: usize) -> Option<Vec<f64>> {
+            use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadAffinityMask};
+            let Vendor::Intel { target } = self.vendor else {
+                return None;
+            };
+            if logical == 0 || logical > 64 {
+                return None;
+            }
+            let thread = unsafe { GetCurrentThread() };
+            let mut temps = Vec::with_capacity(logical);
+            let mut previous = 0usize;
+            for cpu in 0..logical {
+                let prev = unsafe { SetThreadAffinityMask(thread, 1usize << cpu) };
+                if prev == 0 {
+                    break; // processor not available to this process
+                }
+                if cpu == 0 {
+                    previous = prev;
+                }
+                std::thread::yield_now(); // make sure we are running on the new processor
+                let Ok(status) = self.execute("ioctl_read_msr", INTEL_MSR_THERM_STATUS) else {
+                    break;
+                };
+                let t = intel_temp(target, status);
+                if !(0.0..=125.0).contains(&t) {
+                    break;
+                }
+                temps.push(t);
+            }
+            if previous != 0 {
+                unsafe { SetThreadAffinityMask(thread, previous) };
+            }
+            (temps.len() == logical).then_some(temps)
         }
     }
 

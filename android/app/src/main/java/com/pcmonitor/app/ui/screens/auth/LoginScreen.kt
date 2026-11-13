@@ -116,7 +116,7 @@ fun LoginScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     // Welcome Back!
                     Text(
-                        text = "Welcome Back!",
+                        text = "Sign in",
                         fontFamily = ReadableFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,

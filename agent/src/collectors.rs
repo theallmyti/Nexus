@@ -126,6 +126,36 @@ pub fn boot_time() -> Option<u64> {
     System::boot_time().ok()
 }
 
+/// Linux: one temperature per logical processor from coretemp's "Core N" sensors, mapped via
+/// /sys/devices/system/cpu/cpuX/topology/core_id (hyper-threads share their core's value).
+/// None where the chip has no per-core sensors (AMD k10temp, Raspberry Pi) or on Windows.
+pub fn per_cpu_temps(components: &Components, logical: usize) -> Option<Vec<f64>> {
+    if cfg!(windows) || logical == 0 {
+        return None;
+    }
+    let mut by_core: HashMap<u32, f64> = HashMap::new();
+    for c in components.iter() {
+        let label = c.label();
+        let Some(rest) = label.split("Core ").nth(1) else { continue };
+        let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if let (Ok(id), Some(t)) = (digits.parse::<u32>(), c.temperature())
+            && (0.0..=125.0).contains(&t)
+        {
+            by_core.insert(id, f64::from(t));
+        }
+    }
+    if by_core.is_empty() {
+        return None;
+    }
+    (0..logical)
+        .map(|cpu| {
+            let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/core_id");
+            let id = std::fs::read_to_string(path).ok()?.trim().parse::<u32>().ok()?;
+            by_core.get(&id).copied()
+        })
+        .collect()
+}
+
 /// True when the OS exposes per-core temperature sensors (Linux coretemp, not Windows no-driver).
 pub fn has_per_core_temps(components: &Components) -> bool {
     components

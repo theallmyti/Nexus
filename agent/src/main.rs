@@ -12,6 +12,7 @@ mod collectors;
 mod config;
 mod control;
 mod cputemp;
+mod liveclock;
 mod dashboard;
 mod gpu;
 mod hardware;
@@ -76,7 +77,23 @@ fn print_sensors() {
         Some(mts) => say!("{:<40} {mts} MT/s", "memory speed"),
         None => say!("{:<40} n/a", "memory speed"),
     }
+    // Base vs live CPU clock (live differs on Windows, where sysinfo only knows the base clock).
+    let sys = System::new_with_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::everything()))
+        .expect("failed to read system info");
+    let clock = liveclock::LiveClock::open();
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    let (_, mut clocks) = collectors::per_core(&sys);
+    if let Some(&base) = clocks.first() {
+        clock.apply(&mut clocks);
+        say!("{:<40} {base:.0} MHz", "cpu clock (base)");
+        say!("{:<40} {:.0} MHz", "cpu clock (live)", clocks[0]);
+    }
     let components = Components::new_with_refreshed_list().expect("failed to read sensors");
+    let logical = sys.cpus().len();
+    match collectors::per_cpu_temps(&components, logical) {
+        Some(t) => say!("{:<40} {t:?}", "per-core temps (°C)"),
+        None => say!("{:<40} not reported by this chip/OS", "per-core temps"),
+    }
     for c in &components {
         match c.temperature() {
             Some(t) => say!("{:<40} {t:.1} °C", c.label()),
@@ -771,6 +788,7 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
     // which loads heavy system libraries. Keep an empty list there (Task 16, NFR-01).
     // Windows full mode: CPU temperature through PawnIO (admin). Logs why when unavailable.
     let cpu_temp_reader = cputemp::CpuTemp::open();
+    let live_clock = liveclock::LiveClock::open();
     let mut components = if cfg!(windows) {
         Components::new().expect("failed to create sensor list")
     } else {
@@ -1159,7 +1177,12 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
                 collectors::refresh_processes(&mut sys);
                 top = collectors::top_processes(&sys, 5);
             }
-            let (per_core, clocks) = collectors::per_core(&sys);
+            let (per_core, mut clocks) = collectors::per_core(&sys);
+            live_clock.apply(&mut clocks);
+            // Per-core temperatures where the chip has them (Intel via PawnIO, Linux coretemp).
+            let core_temps = cpu_temp_reader
+                .read_cores(per_core.len())
+                .or_else(|| collectors::per_cpu_temps(&components, per_core.len()));
             let ram = collectors::ram_detail(&sys);
 
             let mut args = BTreeMap::new();
@@ -1169,6 +1192,9 @@ pub async fn run(path: PathBuf, stop: Arc<Notify>) {
             args.insert("ramUsedPct".to_string(), num(ram_pct));
             args.insert("perCoreUtil".to_string(), numbers(&per_core));
             args.insert("clocks".to_string(), numbers(&clocks));
+            if let Some(t) = &core_temps {
+                args.insert("coreTemps".to_string(), numbers(t));
+            }
             args.insert(
                 "ram".to_string(),
                 obj([

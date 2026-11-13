@@ -17,6 +17,8 @@ interface DeviceRepository {
     fun getOnlineDeviceCount(): Flow<Int>
     fun getOfflineDeviceCount(): Flow<Int>
     fun getCriticalDeviceCount(): Flow<Int>
+    /** Re-fetch the device list now (pull-to-refresh, home-screen widget). */
+    suspend fun refresh()
     suspend fun startMockSimulation()
     suspend fun stopMockSimulation()
 }

@@ -58,6 +58,9 @@ fun ThresholdSettingsScreen(
     viewModel: ThresholdSettingsViewModel,
     onBack: () -> Unit
 ) {
+    // Visiting this screen from anywhere counts as the Home checklist's "Review your alert limits" step.
+    val checklistContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { com.pcmonitor.app.ui.screens.home.markThresholdsReviewed(checklistContext) }
     val devices by viewModel.devices.collectAsState()
     val isDark = MaterialTheme.colorScheme.background.red < 0.5f
 

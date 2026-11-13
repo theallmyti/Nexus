@@ -122,15 +122,6 @@ fun AlertItem(
                         fontSize = 13.sp,
                         color = WhiteCardText
                     )
-                    if (!alert.isRead) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(CriticalRed)
-                        )
-                    }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 val detailText = if (alert.value != null) {

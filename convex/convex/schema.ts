@@ -12,6 +12,9 @@ export default defineSchema({
     createdAt: v.number(),
     setupDone: v.boolean(), // first-run threshold setup finished (FR-40)
     name: v.optional(v.string()), // display name shown in the app (Settings → profile)
+    // Profile picture: "pixel:<id>" for a built-in pixel character, "photo" for an uploaded image.
+    avatar: v.optional(v.string()),
+    avatarFileId: v.optional(v.id("_storage")),
   }).index("by_email", ["email"]),
 
   sessions: defineTable({
@@ -98,6 +101,7 @@ export default defineSchema({
       packageTemp: v.optional(v.number()),
       perCoreUtil: v.optional(v.array(v.number())), // % per logical core
       clocks: v.optional(v.array(v.number())), // MHz per logical core
+      coreTemps: v.optional(v.array(v.number())), // °C per physical core (Intel coretemp / MSR); absent elsewhere
     }),
     ram: v.object({
       usedPct: v.number(),

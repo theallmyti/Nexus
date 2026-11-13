@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import com.pcmonitor.app.data.Avatar
+import com.pcmonitor.app.data.AvatarStore
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -132,8 +134,11 @@ class MockAuthRepository(
     private fun serverMessage(env: JSONObject): String {
         val data = env.opt("errorData")
         if (data is String && data.isNotBlank()) return data
-        val msg = env.optString("errorMessage")
-        return msg.substringAfter("ConvexError: ", msg).substringBefore('\n').ifBlank { "Something went wrong. Please try again." }
+        val msg = env.optString("errorMessage").replace(Regex("^\\[Request ID: [^\\]]*]\\s*"), "")
+        if (msg.isBlank() || msg.startsWith("Server Error") || msg.startsWith("Could not find")) {
+            return "Nexus couldn't reach its server. Check your connection and try again."
+        }
+        return msg.substringAfter("ConvexError: ", msg).substringBefore('\n')
     }
 
     override suspend fun logout() {
@@ -156,6 +161,7 @@ class MockAuthRepository(
                 } catch (_: Exception) {}
             }
             userPreferencesRepository?.clearSessionToken()
+            AvatarStore.clear()
         }
         _authState.value = AuthState(
             isLoggedIn = false,
@@ -227,9 +233,41 @@ class MockAuthRepository(
                 email = o.optString("email"),
                 name = if (o.isNull("name")) null else o.optString("name"),
                 createdAt = o.optLong("createdAt"),
-                deviceCount = o.optInt("deviceCount")
-            )
+                deviceCount = o.optInt("deviceCount"),
+                avatar = if (o.isNull("avatar")) null else o.optString("avatar"),
+                avatarUrl = if (o.isNull("avatarUrl")) null else o.optString("avatarUrl")
+            ).also { AvatarStore.set(Avatar(it.avatar, it.avatarUrl)) }
         }
+
+    private fun avatarFrom(v: Any?): Avatar {
+        val o = v as? JSONObject ?: throw Exception("Couldn't save your picture.")
+        return Avatar(
+            if (o.isNull("avatar")) null else o.optString("avatar"),
+            if (o.isNull("avatarUrl")) null else o.optString("avatarUrl")
+        ).also { AvatarStore.set(it) }
+    }
+
+    override suspend fun setPixelAvatar(id: String?): Result<Avatar> =
+        signedIn("mutation", "auth:setAvatar", if (id != null) mapOf("pixel" to id) else emptyMap()).mapCatching(::avatarFrom)
+
+    // Convex file upload: get a one-time URL, POST the bytes, then attach the returned storage id.
+    override suspend fun uploadAvatarPhoto(jpeg: ByteArray): Result<Avatar> {
+        val uploadUrl = signedIn("mutation", "auth:avatarUploadUrl").getOrElse { return Result.failure(it) } as? String
+            ?: return Result.failure(Exception("Couldn't start the upload. Try again."))
+        val storageId = withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder()
+                    .url(uploadUrl)
+                    .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) throw Exception("Upload failed. Try again.")
+                    JSONObject(resp.body?.string() ?: "").getString("storageId")
+                }
+            }
+        }.getOrElse { return Result.failure(Exception("Upload failed. Check your connection and try again.")) }
+        return signedIn("mutation", "auth:setAvatar", mapOf("fileId" to storageId)).mapCatching(::avatarFrom)
+    }
 
     override suspend fun updateName(name: String): Result<String> =
         signedIn("mutation", "auth:updateProfile", mapOf("name" to name)).map { v ->

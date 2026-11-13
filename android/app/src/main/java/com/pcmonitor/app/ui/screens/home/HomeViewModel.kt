@@ -4,9 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pcmonitor.app.data.model.Alert
 import com.pcmonitor.app.data.model.Device
+import com.pcmonitor.app.data.model.problem
 import com.pcmonitor.app.data.repository.AlertRepository
 import com.pcmonitor.app.data.repository.DeviceRepository
 import com.pcmonitor.app.data.repository.UserPreferencesRepository
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +28,7 @@ data class HomeUiState(
     val criticalCount: Int = 0,
     val recentAlerts: List<Alert> = emptyList(),
     val unreadAlertCount: Int = 0,
+    val hasNewAlerts: Boolean = false,
     val useFahrenheit: Boolean = false,
     val isLoading: Boolean = false
 )
@@ -38,29 +43,30 @@ class HomeViewModel(
         deviceRepository.devices,
         alertRepository.alerts,
         preferencesRepository.userName,
-        preferencesRepository.useFahrenheit
-    ) { devices, alerts, name, fahrenheit ->
+        preferencesRepository.useFahrenheit,
+        com.pcmonitor.app.notification.AlertsSeen.lastSeen
+    ) { devices, alerts, name, fahrenheit, lastSeen ->
         val total = devices.size
         val online = devices.count { it.isOnline }
         val offline = devices.count { !it.isOnline }
-        val critical = devices.count { dev ->
-            dev.isOnline && (
-                dev.hardwareStats.cpu.averageTemperature >= 85f ||
-                (dev.hardwareStats.gpu?.temperature ?: 0f) >= 80f ||
-                dev.hardwareStats.ram.usagePercent >= 90f
-            )
-        }
+        val critical = devices.count { it.problem() != null }
+        // Problems first, then online, then offline; name keeps the order stable between refreshes.
+        val sorted = devices.sortedWith(
+            compareBy<Device>({ it.problem() == null }, { !it.isOnline }, { it.name.lowercase() })
+        )
         val unreadCount = alerts.count { !it.isRead }
+        val hasNew = com.pcmonitor.app.notification.AlertsSeen.hasNew(alerts, lastSeen)
 
         HomeUiState(
             userName = if (name.isNotBlank()) name else "User",
-            devices = devices,
+            devices = sorted,
             totalCount = total,
             onlineCount = online,
             offlineCount = offline,
             criticalCount = critical,
-            recentAlerts = alerts.take(3),
+            recentAlerts = alerts.take(5),
             unreadAlertCount = unreadCount,
+            hasNewAlerts = hasNew,
             useFahrenheit = fahrenheit,
             isLoading = false
         )
@@ -69,5 +75,22 @@ class HomeViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = HomeUiState(isLoading = true)
     )
+
+    var isRefreshing by mutableStateOf(false)
+        private set
+
+    fun refresh() {
+        if (isRefreshing) return
+        viewModelScope.launch {
+            isRefreshing = true
+            try { deviceRepository.refresh() } finally { isRefreshing = false }
+        }
+    }
+
+    fun markAllAlertsRead() {
+        viewModelScope.launch {
+            alertRepository.alerts.value.filter { !it.isRead }.forEach { alertRepository.markAsRead(it.id) }
+        }
+    }
 }
 

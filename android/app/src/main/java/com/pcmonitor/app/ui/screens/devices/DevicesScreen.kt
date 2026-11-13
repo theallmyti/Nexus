@@ -198,7 +198,7 @@ fun DevicesScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "1. Double-click Start-PC-Monitor on your PC\n2. Tap '+ Add Device' below to scan the code",
+                                    text = "Install Nexus on your computer, then tap Add Device and scan the QR code it shows.",
                                     fontFamily = ReadableFontFamily,
                                     fontSize = 13.sp,
                                     color = TextGray,

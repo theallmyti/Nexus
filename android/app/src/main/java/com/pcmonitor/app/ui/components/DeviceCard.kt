@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +33,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.data.model.Device
 import com.pcmonitor.app.data.model.DeviceType
+import com.pcmonitor.app.data.model.ageLabel
+import com.pcmonitor.app.data.model.problem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import com.pcmonitor.app.ui.theme.PixelFontFamily
 import com.pcmonitor.app.ui.theme.ReadableFontFamily
 import com.pcmonitor.app.ui.theme.WhiteCardBg
@@ -44,10 +50,16 @@ fun DeviceCard(
     device: Device,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    useFahrenheit: Boolean = false
+    useFahrenheit: Boolean = false,
+    showProblemChip: Boolean = true
 ) {
     val stats = device.hardwareStats
     val isOnline = device.isOnline
+    val problem = device.problem()
+    // Re-render every 5 s so "Updated 12s ago" keeps counting without new data.
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { delay(5_000L); value = System.currentTimeMillis() }
+    }
 
     // Matches the crisp white card with subtle border from reference screen 4
     Box(
@@ -55,7 +67,11 @@ fun DeviceCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(WhiteCardBg)
-            .border(1.5.dp, WhiteCardBorder, RoundedCornerShape(8.dp))
+            .border(
+                if (problem != null) 2.5.dp else 1.5.dp,
+                if (problem != null) Color(0xFFDC2626) else WhiteCardBorder,
+                RoundedCornerShape(8.dp)
+            )
             .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -106,6 +122,12 @@ fun DeviceCard(
                         fontSize = 12.sp,
                         color = WhiteCardTextSecondary
                     )
+                    Text(
+                        text = if (isOnline) "Updated ${ageLabel(device.lastSeen, now)}" else "Last seen ${ageLabel(device.lastSeen, now)}",
+                        fontFamily = ReadableFontFamily,
+                        fontSize = 10.sp,
+                        color = WhiteCardTextSecondary.copy(alpha = 0.8f)
+                    )
                 }
 
                 // Online/Offline Status Pill (Light green / Light red from reference)
@@ -138,14 +160,43 @@ fun DeviceCard(
                 }
             }
 
+            if (problem != null && showProblemChip) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFFEE2E2))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFB91C1C),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = problem,
+                        fontFamily = ReadableFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color(0xFFB91C1C)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             // Metrics Row: CPU, GPU, RAM, Battery
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Columns share the width evenly; GPU / Battery are left out on devices without them (e.g. a Pi).
+                val showGpu = device.hasGpu ?: (stats.gpu != null)
+                val showBattery = device.hasBattery ?: (stats.battery != null)
+                val cell = Modifier.weight(1f)
                 // CPU
                 val cpuTemp = stats.cpu.averageTemperature
                 val cpuDisplay = if (isOnline) {
@@ -155,22 +206,22 @@ fun DeviceCard(
                         "${stats.cpu.totalUtilization.toInt()}%"
                     } else "--"
                 } else "--"
-                StatMiniBox(value = cpuDisplay, label = "CPU")
+                StatMiniBox(value = cpuDisplay, label = "CPU", modifier = cell)
 
                 // GPU
                 val gpuDisplay = if (isOnline && stats.gpu != null) {
                     val gpuTemp = stats.gpu.temperature
                     if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
                 } else "--"
-                StatMiniBox(value = gpuDisplay, label = "GPU")
+                if (showGpu) StatMiniBox(value = gpuDisplay, label = "GPU", modifier = cell)
 
                 // RAM
                 val ramDisplay = if (isOnline) "${stats.ram.usagePercent.toInt()}%" else "--"
-                StatMiniBox(value = ramDisplay, label = "RAM")
+                StatMiniBox(value = ramDisplay, label = "RAM", modifier = cell)
 
                 // Battery
                 val batteryDisplay = if (isOnline && stats.battery != null) "${stats.battery.percentage}%" else "--"
-                StatMiniBox(value = batteryDisplay, label = "Battery")
+                if (showBattery) StatMiniBox(value = batteryDisplay, label = "Battery", modifier = cell)
             }
         }
     }
@@ -179,9 +230,10 @@ fun DeviceCard(
 @Composable
 private fun StatMiniBox(
     value: String,
-    label: String
+    label: String,
+    modifier: Modifier = Modifier
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
             fontFamily = PixelFontFamily,

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Nexus</string>
+    <string name="widget_description">Your devices at a glance: online status, CPU temperature and RAM.</string>
 </resources>

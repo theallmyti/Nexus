@@ -40,7 +40,7 @@ fun FleetOverviewCard(
         FleetStatBox(
             count = totalDevices,
             label = "Total",
-            backgroundColor = Color(0xFF388E3C),
+            backgroundColor = Neutral,
             modifier = Modifier.weight(1f)
         )
 
@@ -48,7 +48,7 @@ fun FleetOverviewCard(
         FleetStatBox(
             count = onlineDevices,
             label = "Online",
-            backgroundColor = Color(0xFF4CAF50),
+            backgroundColor = if (onlineDevices > 0) Color(0xFF2E7D32) else Neutral,
             modifier = Modifier.weight(1f)
         )
 
@@ -56,7 +56,7 @@ fun FleetOverviewCard(
         FleetStatBox(
             count = offlineDevices,
             label = "Offline",
-            backgroundColor = Color(0xFFFB8C00),
+            backgroundColor = if (offlineDevices > 0) Color(0xFFE65100) else Neutral,
             modifier = Modifier.weight(1f)
         )
 
@@ -64,11 +64,14 @@ fun FleetOverviewCard(
         FleetStatBox(
             count = criticalDevices,
             label = "Critical",
-            backgroundColor = Color(0xFFE53935),
+            backgroundColor = if (criticalDevices > 0) Color(0xFFC62828) else Neutral,
             modifier = Modifier.weight(1f)
         )
     }
 }
+
+// Zero offline / zero critical is good news; it shouldn't be painted orange and red.
+private val Neutral = Color(0xFF1E293B)
 
 @Composable
 private fun FleetStatBox(

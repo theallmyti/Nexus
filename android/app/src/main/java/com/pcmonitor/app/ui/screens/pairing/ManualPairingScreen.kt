@@ -86,7 +86,7 @@ fun ManualPairingScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Displayed on your computer screen after running Start-PC-Monitor.",
+                text = "Shown on your computer at the end of setup, or from the tray icon → Pair Device.",
                 fontFamily = ReadableFontFamily,
                 fontSize = 13.sp,
                 color = if (isDark) TextGray else Color(0xFF6B5B45),

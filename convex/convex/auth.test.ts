@@ -103,3 +103,13 @@ test("deleteAccount cascades deletion of user, sessions, and devices (GDPR Art. 
   const sessions = await t.run((ctx) => ctx.db.query("sessions").collect());
   expect(sessions.length).toBe(0);
 });
+
+test("setAvatar accepts known pixel characters, rejects others, and clears", async () => {
+  const t = convexTest(schema, modules);
+  const { token } = await t.action(api.auth.signUp, { turnstileToken: "test-token", email: EMAIL, password: PASSWORD });
+  await t.mutation(api.auth.setAvatar, { token, pixel: "fox" });
+  expect((await t.query(api.auth.profile, { token })).avatar).toBe("pixel:fox");
+  await expect(t.mutation(api.auth.setAvatar, { token, pixel: "dragon" })).rejects.toThrow(/Unknown avatar/);
+  await t.mutation(api.auth.setAvatar, { token });
+  expect((await t.query(api.auth.profile, { token })).avatar).toBeNull();
+});

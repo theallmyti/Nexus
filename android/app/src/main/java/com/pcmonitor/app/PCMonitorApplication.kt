@@ -34,6 +34,8 @@ class PCMonitorApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createNotificationChannels(this)
+        com.pcmonitor.app.notification.AlertsSeen.init(this)
+        com.pcmonitor.app.data.AvatarStore.init(this)
 
         userPreferencesRepository = UserPreferencesRepository(this)
         authRepository = MockAuthRepository(userPreferencesRepository)
@@ -56,6 +58,22 @@ class PCMonitorApplication : Application() {
                 }
             } else {
                 Log.w("NexusApplication", "Failed to fetch FCM registration token", task.exception)
+            }
+        }
+
+        // Keep the home-screen widget in step with the app's device list (at most every 30 s).
+        CoroutineScope(Dispatchers.Default).launch {
+            // Redraw right away when the list changes size (first load, pairing, unpairing),
+            // otherwise at most every 30 s for the live numbers.
+            var lastAt = 0L
+            var lastCount = -1
+            devRepo.devices.collect { list ->
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (list.size != lastCount || now - lastAt >= 30_000L) {
+                    lastAt = now
+                    lastCount = list.size
+                    com.pcmonitor.app.widget.DevicesWidget.render(this@PCMonitorApplication, list)
+                }
             }
         }
 

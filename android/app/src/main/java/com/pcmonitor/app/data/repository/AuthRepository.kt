@@ -20,6 +20,10 @@ interface AuthRepository {
     // Settings → profile and Account & Security
     suspend fun fetchProfile(): Result<UserProfile>
     suspend fun updateName(name: String): Result<String>
+    /** Pick a built-in pixel character, or null to remove the picture. */
+    suspend fun setPixelAvatar(id: String?): Result<com.pcmonitor.app.data.Avatar>
+    /** Upload an already-resized JPEG as the profile photo. */
+    suspend fun uploadAvatarPhoto(jpeg: ByteArray): Result<com.pcmonitor.app.data.Avatar>
     suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit>
     suspend fun signOutEverywhere(): Result<Unit>
     /** The account's data as JSON (GDPR export). */

@@ -54,6 +54,17 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <receiver
+            android:name=".widget.DevicesWidget"
+            android:exported="true"
+            android:label="Nexus devices">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_devices_info" />
+        </receiver>
     </application>
 
 </manifest>

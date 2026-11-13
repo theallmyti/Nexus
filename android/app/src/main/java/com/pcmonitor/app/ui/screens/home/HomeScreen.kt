@@ -30,6 +30,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.ui.components.AlertItem
+import com.pcmonitor.app.notification.AlertsSeen
 import com.pcmonitor.app.ui.components.AppLogo
 import com.pcmonitor.app.ui.components.DeviceCard
 import com.pcmonitor.app.ui.components.FleetOverviewCard
@@ -59,17 +66,20 @@ import com.pcmonitor.app.ui.theme.TextDarkGray
 import com.pcmonitor.app.ui.theme.TextGray
 import com.pcmonitor.app.ui.theme.TextWhite
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
     onDeviceClick: (String) -> Unit,
-    onViewAllDevicesClick: () -> Unit,
     onAddDeviceClick: () -> Unit = {},
+    onOpenThresholds: () -> Unit = {},
     onAlertsClick: () -> Unit,
     onProfileClick: () -> Unit,
     onAlertClick: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showAlertSheet by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Box(
         modifier = Modifier
@@ -80,7 +90,11 @@ fun HomeScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ArcadeYellow)
             }
-        } else {
+        } else PullToRefreshBox(
+            isRefreshing = viewModel.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize()
+        ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -111,18 +125,18 @@ fun HomeScreen(
                         // Notification Icon + Avatar Icon
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box {
-                                IconButton(onClick = onAlertsClick) {
+                                IconButton(onClick = { showAlertSheet = true; AlertsSeen.markSeen(context) }) {
                                     Icon(
                                         imageVector = Icons.Default.Notifications,
                                         contentDescription = "Alerts",
                                         tint = ArcadeYellow
                                     )
                                 }
-                                if (state.unreadAlertCount > 0) {
+                                if (state.hasNewAlerts) {
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
-                                            .padding(top = 8.dp, end = 8.dp)
+                                            .padding(top = 10.dp, end = 11.dp)
                                             .size(8.dp)
                                             .clip(CircleShape)
                                             .background(CriticalRed)
@@ -134,60 +148,55 @@ fun HomeScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(40.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF2A3F5F))
                                     .clickable { onProfileClick() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = "Profile",
-                                    tint = ArcadeYellow,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                com.pcmonitor.app.ui.components.UserAvatar(size = 40.dp)
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Greeting
+                    // Greeting (original layout)
                     Text(
-                        text = "Good morning, ${state.userName}!",
+                        text = "${greeting()}, ${state.userName}!",
                         fontFamily = ReadableFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
                         color = MaterialTheme.colorScheme.onBackground
                     )
-
                     Spacer(modifier = Modifier.height(4.dp))
-
                     Text(
                         text = "Here's what's happening with your devices.",
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Fleet Overview (4 Boxes: Total, Online, Offline, Critical)
+                    // Fleet Overview (Total, Online, Offline, Critical)
                     FleetOverviewCard(
                         totalDevices = state.totalCount,
                         onlineDevices = state.onlineCount,
                         offlineDevices = state.offlineCount,
                         criticalDevices = state.criticalCount
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    // Each card adds its own bottom gap, so a hidden card leaves no hole.
+                    StartHereCard(
+                        hasDevices = state.devices.isNotEmpty(),
+                        onAddDevice = onAddDeviceClick,
+                        onOpenThresholds = onOpenThresholds
+                    )
+                    NeedsAttentionCard(devices = state.devices, onDeviceClick = onDeviceClick)
 
-                    // Section: Your Devices
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    if (state.devices.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Your Devices",
                             fontFamily = ReadableFontFamily,
@@ -195,64 +204,21 @@ fun HomeScreen(
                             fontSize = 17.sp,
                             color = MaterialTheme.colorScheme.onBackground
                         )
-
-                        Text(
-                            text = "View all →",
-                            fontFamily = ReadableFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = PixelGreen,
-                            modifier = Modifier
-                                .clickable { onViewAllDevicesClick() }
-                                .padding(4.dp)
-                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
                 // Device Cards list
                 if (state.devices.isEmpty()) {
                     item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(CreamBackground)
-                                .border(2.dp, CreamBorder, RoundedCornerShape(12.dp))
-                                .padding(20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                PixelComputer(size = 72.dp)
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Text(
-                                    text = "CONNECT YOUR PC",
-                                    fontFamily = PixelFontFamily,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CreamText,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "1. Double-click Start-PC-Monitor on your PC\n2. Tap the button below to scan your QR code!",
-                                    fontFamily = ReadableFontFamily,
-                                    fontSize = 13.sp,
-                                    color = CreamTextSecondary,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 18.sp
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                RetroButton(
-                                    text = "+ Connect Computer",
-                                    onClick = onAddDeviceClick,
-                                    variant = RetroButtonVariant.Primary,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No computers yet. Once you pair one, it shows up here with its live temperature and memory.",
+                            fontFamily = ReadableFontFamily,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
                     }
                 } else {
                     items(state.devices, key = { it.id }) { device ->
@@ -260,47 +226,8 @@ fun HomeScreen(
                             device = device,
                             onClick = { onDeviceClick(device.id) },
                             useFahrenheit = state.useFahrenheit,
+                            showProblemChip = false, // the Needs attention card above already names it
                             modifier = Modifier.padding(bottom = 10.dp)
-                        )
-                    }
-                }
-
-                // Recent Alerts Section (if any)
-                if (state.recentAlerts.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Recent Alerts",
-                                fontFamily = ReadableFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 17.sp,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-
-                            Text(
-                                text = "See all →",
-                                fontFamily = ReadableFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = PixelGreen,
-                                modifier = Modifier
-                                    .clickable { onAlertsClick() }
-                                    .padding(4.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-
-                    items(state.recentAlerts, key = { it.id }) { alert ->
-                        AlertItem(
-                            alert = alert,
-                            onClick = { onAlertClick(alert.id) },
-                            modifier = Modifier.padding(bottom = 8.dp)
                         )
                     }
                 }
@@ -311,5 +238,71 @@ fun HomeScreen(
             }
         }
     }
+
+    // Bell: a quick peek at the latest alerts without leaving Home; the Alerts tab has the full list.
+    if (showAlertSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAlertSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Latest alerts",
+                        fontFamily = ReadableFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (state.unreadAlertCount > 0) {
+                        Text(
+                            text = "Mark all read",
+                            fontFamily = ReadableFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = PixelGreen,
+                            modifier = Modifier.clickable { viewModel.markAllAlertsRead() }.padding(12.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (state.recentAlerts.isEmpty()) {
+                    Text(
+                        text = "All quiet. No alerts yet.",
+                        fontFamily = ReadableFontFamily,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                } else {
+                    state.recentAlerts.forEach { alert ->
+                        AlertItem(
+                            alert = alert,
+                            onClick = { showAlertSheet = false; onAlertClick(alert.id) },
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                RetroButton(
+                    text = "Open Alerts",
+                    onClick = { showAlertSheet = false; onAlertsClick() },
+                    variant = RetroButtonVariant.Primary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+private fun greeting(): String = when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) {
+    in 5..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    in 17..21 -> "Good evening"
+    else -> "Hello"
 }
 

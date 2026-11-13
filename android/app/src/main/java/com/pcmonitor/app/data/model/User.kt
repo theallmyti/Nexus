@@ -12,7 +12,9 @@ data class UserProfile(
     val email: String,
     val name: String?,
     val createdAt: Long,
-    val deviceCount: Int
+    val deviceCount: Int,
+    val avatar: String? = null,     // "pixel:<id>", "photo", or null
+    val avatarUrl: String? = null   // the photo's URL when avatar == "photo"
 )
 
 data class AuthState(

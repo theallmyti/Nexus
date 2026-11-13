@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.ui.components.PixelCharacter
+import com.pcmonitor.app.ui.components.PixelScanScene
 import com.pcmonitor.app.ui.components.PixelComputer
 import com.pcmonitor.app.ui.components.RetroTopBar
 import com.pcmonitor.app.ui.theme.ArcadeYellow
@@ -80,13 +81,7 @@ fun AddDeviceScreen(
                     .border(2.dp, Color(0xFF8B7355), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    PixelComputer(size = 96.dp)
-                    PixelCharacter(size = 54.dp, modifier = Modifier.padding(start = 12.dp))
-                }
+                PixelScanScene(modifier = Modifier.size(width = 220.dp, height = 140.dp))
             }
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -122,35 +117,6 @@ fun AddDeviceScreen(
                 onClick = onEnterCodeClick
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Easy 3-step setup guide for non-technical users
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isDark) Color(0xFF162640) else Color(0xFFF3ECE0))
-                    .border(1.dp, if (isDark) Color(0xFF2A3F5F) else Color(0xFF8B7355), RoundedCornerShape(10.dp))
-                    .padding(16.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "HOW TO GET THE CODE:",
-                        fontFamily = PixelFontFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ArcadeYellow
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "1. On your Windows PC, run nexus-setup-0.2.1.exe to install the Nexus agent\n2. The QR code and 6-digit code will appear during setup\n3. Tap 'Scan QR Code' above and point your phone at the screen!",
-                        fontFamily = ReadableFontFamily,
-                        fontSize = 13.sp,
-                        color = if (isDark) TextWhite else Color(0xFF2C2214),
-                        lineHeight = 19.sp
-                    )
-                }
-            }
         }
     }
 }

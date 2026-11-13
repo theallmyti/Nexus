@@ -35,13 +35,19 @@ fun RetroProgressBar(
     trackColor: Color = DarkNavyLight,
     label: String? = null,
     showPercentage: Boolean = false,
-    height: Dp = 12.dp
+    height: Dp = 12.dp,
+    // true for charge-style values (battery), where a full bar is good and an empty one is the warning.
+    higherIsBetter: Boolean = false
 ) {
     val clampedProgress = progress.coerceIn(0f, 1f)
     val percentage = (clampedProgress * 100).toInt()
 
     // Color changes based on percentage
-    val barColor = when {
+    val barColor = if (higherIsBetter) when {
+        percentage <= 15 -> CriticalRed
+        percentage <= 30 -> OrangeAccent
+        else -> color
+    } else when {
         percentage >= 90 -> CriticalRed
         percentage >= 70 -> OrangeAccent
         else -> color

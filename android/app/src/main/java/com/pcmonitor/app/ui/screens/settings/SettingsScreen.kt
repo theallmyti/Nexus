@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pcmonitor.app.ui.components.AppLogo
 import com.pcmonitor.app.ui.components.PixelCharacter
+import com.pcmonitor.app.ui.components.UserAvatar
+import com.pcmonitor.app.ui.components.AvatarPickerSheet
 import com.pcmonitor.app.ui.components.RetroButton
 import com.pcmonitor.app.ui.components.RetroButtonVariant
 import com.pcmonitor.app.ui.components.RetroTopBar
@@ -71,6 +73,12 @@ fun SettingsScreen(
     var showProfileDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showAppPrefsDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var quiet by remember { mutableStateOf(com.pcmonitor.app.notification.AlertSnooze.quietHours(context)) }
+    fun setQuiet(on: Boolean, start: Int, end: Int) {
+        com.pcmonitor.app.notification.AlertSnooze.setQuietHours(context, on, start, end)
+        quiet = Triple(on, start, end)
+    }
 
     Column(
         modifier = Modifier
@@ -111,7 +119,7 @@ fun SettingsScreen(
                             .border(1.dp, Color(0xFF8B7355), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        PixelCharacter(size = 36.dp)
+                        UserAvatar(size = 46.dp)
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
@@ -157,7 +165,8 @@ fun SettingsScreen(
             SettingsMenuItem(
                 icon = Icons.Default.Palette,
                 title = "App Preferences",
-                subtitle = "Dark mode · ${if (state.useFahrenheit) "°F" else "°C"}",
+                subtitle = "Dark mode · ${if (state.useFahrenheit) "°F" else "°C"}" +
+                    if (quiet.first) " · Quiet ${hourLabel(quiet.second)}–${hourLabel(quiet.third)}" else "",
                 onClick = { showAppPrefsDialog = true }
             )
 
@@ -238,6 +247,38 @@ fun SettingsScreen(
                             )
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Quiet hours: no alert notifications in this window (alerts still show in the app).
+                    val (qOn, qStart, qEnd) = quiet
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Quiet hours", color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                text = "Silence alert notifications overnight",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = qOn,
+                            onCheckedChange = { setQuiet(it, qStart, qEnd) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = ArcadeYellow,
+                                checkedTrackColor = PixelGreen
+                            )
+                        )
+                    }
+                    if (qOn) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HourStepper("From", qStart) { setQuiet(true, it, qEnd) }
+                        HourStepper("Until", qEnd) { setQuiet(true, qStart, it) }
+                    }
                 }
             },
             confirmButton = {
@@ -256,98 +297,7 @@ fun SettingsScreen(
 
     // Profile dialog (name card): who you are; the name is saved to the account.
     if (showProfileDialog) {
-        val profile = viewModel.profile
-        AlertDialog(
-            onDismissRequest = { showProfileDialog = false },
-            title = {
-                Text(
-                    text = "Your Profile",
-                    fontFamily = PixelFontFamily,
-                    color = ArcadeYellow,
-                    fontSize = 15.sp
-                )
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFDF6E3))
-                            .border(1.5.dp, Color(0xFF8B7355), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        PixelCharacter(size = 42.dp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    RetroTextField(
-                        value = viewModel.profileName,
-                        onValueChange = { viewModel.profileName = it.take(40) },
-                        label = "Display name",
-                        leadingIcon = Icons.Default.Person,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFFDF6E3))
-                            .border(1.dp, Color(0xFF8B7355), RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            ProfileRow("Email", state.userEmail)
-                            Spacer(modifier = Modifier.height(6.dp))
-                            ProfileRow(
-                                "Member since",
-                                profile?.let { memberSince(it.createdAt) } ?: "…"
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            val count = profile?.deviceCount ?: state.deviceCount
-                            ProfileRow("Computers paired", "$count")
-                        }
-                    }
-
-                    if (viewModel.profileError != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = viewModel.profileError ?: "",
-                            fontSize = 12.sp,
-                            color = CriticalRed,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Text(
-                    text = if (viewModel.profileSaving) "Saving…" else "Save",
-                    color = ArcadeYellow,
-                    fontFamily = PixelFontFamily,
-                    modifier = Modifier
-                        .clickable(enabled = !viewModel.profileSaving) {
-                            viewModel.saveProfileName { showProfileDialog = false }
-                        }
-                        .padding(8.dp)
-                )
-            },
-            dismissButton = {
-                Text(
-                    text = "Cancel",
-                    color = Color(0xFF94A3B8),
-                    fontFamily = PixelFontFamily,
-                    modifier = Modifier
-                        .clickable { showProfileDialog = false }
-                        .padding(8.dp)
-                )
-            },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        ProfileDialog(viewModel = viewModel, onDismiss = { showProfileDialog = false })
     }
 
     // About Dialog
@@ -371,7 +321,7 @@ fun SettingsScreen(
                     AppLogo(size = 72.dp)
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Nexus v1.0.0\nReal-time PC Hardware Monitoring\nMIT License 2026",
+                        text = "Nexus ${appVersion(context)}\nHardware monitoring for your computers\nMIT License",
                         fontFamily = ReadableFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 22.sp,
@@ -473,3 +423,161 @@ private fun ProfileRow(label: String, value: String) {
 
 private fun memberSince(createdAt: Long): String =
     java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(createdAt))
+
+/** Shared by the Settings profile card and the Home avatar. Call viewModel.openProfile() before showing. */
+@Composable
+fun ProfileDialog(viewModel: SettingsViewModel, onDismiss: () -> Unit) {
+    val state by viewModel.uiState.collectAsState()
+    var showAvatarPicker by remember { mutableStateOf(false) }
+    if (showAvatarPicker) {
+        val current by com.pcmonitor.app.data.AvatarStore.avatar.collectAsState()
+        AvatarPickerSheet(
+            current = current,
+            busy = viewModel.avatarBusy,
+            error = viewModel.avatarError,
+            onPhoto = { viewModel.uploadAvatar(it) },
+            onPixel = { viewModel.setPixelAvatar(it) },
+            onDismiss = { showAvatarPicker = false }
+        )
+    }
+
+    val profile = viewModel.profile
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        title = {
+            Text(
+                text = "Your Profile",
+                fontFamily = PixelFontFamily,
+                color = ArcadeYellow,
+                fontSize = 15.sp
+            )
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Tap the picture to change it (photo or pixel character).
+                UserAvatar(
+                    size = 72.dp,
+                    modifier = Modifier
+                        .border(2.dp, Color(0xFF8B7355), CircleShape)
+                        .clickable { showAvatarPicker = true }
+                )
+                Text(
+                    text = "Change picture",
+                    fontFamily = ReadableFontFamily,
+                    fontSize = 13.sp,
+                    color = ArcadeYellow,
+                    modifier = Modifier.clickable { showAvatarPicker = true }.padding(8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                RetroTextField(
+                    value = viewModel.profileName,
+                    onValueChange = { viewModel.profileName = it.take(40) },
+                    label = "Display name",
+                    leadingIcon = Icons.Default.Person,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFFDF6E3))
+                        .border(1.dp, Color(0xFF8B7355), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Column {
+                        ProfileRow("Email", state.userEmail)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ProfileRow(
+                            "Member since",
+                            profile?.let { memberSince(it.createdAt) } ?: "…"
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val count = profile?.deviceCount ?: state.deviceCount
+                        ProfileRow("Computers paired", "$count")
+                    }
+                }
+
+                if (viewModel.profileError != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = viewModel.profileError ?: "",
+                        fontSize = 12.sp,
+                        color = CriticalRed,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Text(
+                text = if (viewModel.profileSaving) "Saving…" else "Save",
+                color = ArcadeYellow,
+                fontFamily = PixelFontFamily,
+                modifier = Modifier
+                    .clickable(enabled = !viewModel.profileSaving) {
+                        viewModel.saveProfileName { onDismiss() }
+                    }
+                    .padding(8.dp)
+            )
+        },
+        dismissButton = {
+            Text(
+                text = "Cancel",
+                color = Color(0xFF94A3B8),
+                fontFamily = PixelFontFamily,
+                modifier = Modifier
+                    .clickable { onDismiss() }
+                    .padding(8.dp)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.surface
+    )
+}
+
+private fun hourLabel(h: Int): String = when {
+    h == 0 -> "12 AM"
+    h < 12 -> "$h AM"
+    h == 12 -> "12 PM"
+    else -> "${h - 12} PM"
+}
+
+@Composable
+private fun HourStepper(label: String, hour: Int, onChange: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "−",
+                color = ArcadeYellow,
+                fontSize = 20.sp,
+                modifier = Modifier.clickable { onChange((hour + 23) % 24) }.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            Text(
+                text = hourLabel(hour),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(56.dp)
+            )
+            Text(
+                text = "+",
+                color = ArcadeYellow,
+                fontSize = 20.sp,
+                modifier = Modifier.clickable { onChange((hour + 1) % 24) }.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+/** The installed build's real version, not a hard-coded one. */
+private fun appVersion(context: android.content.Context): String =
+    runCatching { "v" + context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrDefault("")

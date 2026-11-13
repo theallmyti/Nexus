@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1-cell-high widget: one line, no cards. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="12dp"
+    android:paddingEnd="14dp"
+    android:background="@drawable/widget_bg">
+
+    <ImageView
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/app_logo"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
+
+    <ImageView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="12dp"
+        android:layout_marginStart="8dp"
+        android:adjustViewBounds="true"
+        android:scaleType="fitStart"
+        android:contentDescription="Nexus" />
+
+    <TextView
+        android:id="@+id/widget_summary"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:gravity="end"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textStyle="bold"
+        android:textColor="#E2E8F0"
+        android:textSize="13sp" />
+</LinearLayout>

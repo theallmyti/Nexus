@@ -256,18 +256,19 @@ class MockDeviceRepository(
                         baseStats.copy(disks = parseDisks(caps?.optJSONArray("drives")))
                     } else baseStats
 
-                    newDevices.add(
-                        Device(
-                            id = id,
-                            name = name,
-                            os = os,
-                            type = devType,
-                            isOnline = isOnline,
-                            lastSeen = lastSeen,
-                            hardwareStats = stats,
-                            ownerId = activeUserEmail
-                        )
+                    val device = Device(
+                        id = id,
+                        name = name,
+                        os = os,
+                        type = devType,
+                        isOnline = isOnline,
+                        lastSeen = lastSeen,
+                        hardwareStats = stats,
+                        ownerId = activeUserEmail,
+                        hasGpu = if (caps?.has("hasNvidiaGpu") == true) caps.optBoolean("hasNvidiaGpu") else null,
+                        hasBattery = if (caps?.has("hasBattery") == true) caps.optBoolean("hasBattery") else null
                     )
+                    newDevices.add(device.copy(hardwareStats = device.gate(stats)))
                 }
                 _devices.value = newDevices
                 if (newDevices.isNotEmpty()) {
@@ -386,6 +387,16 @@ class MockDeviceRepository(
         }
     }
 
+    override suspend fun refresh() {
+        // After a cold start (widget worker) the session collector may not have set the user yet.
+        repeat(20) {
+            if (activeUserEmail.isNotBlank()) return@repeat
+            delay(250L)
+        }
+        lastDevicesFetchMs = System.currentTimeMillis()
+        withContext(Dispatchers.IO) { fetchDevicesFromConvex() }
+    }
+
     override suspend fun setDeviceOnline(deviceId: String, isOnline: Boolean) {
         _devices.value = _devices.value.map { device ->
             if (device.id == deviceId) device.copy(isOnline = isOnline, lastSeen = System.currentTimeMillis())
@@ -433,6 +444,9 @@ class MockDeviceRepository(
                 }
 
                 if (activeDeviceId.isBlank()) continue
+                // Snapshot the id: the user can open another device while the query below is in
+                // flight, and its answer must land on the device it was asked for.
+                val queriedId = activeDeviceId
 
                 // Renew live viewing lease every 15s per contract (ANDROID_INTEGRATION_GUIDE Section 5)
                 if (now - lastViewerPingMs > 15000L) {
@@ -444,7 +458,7 @@ class MockDeviceRepository(
                                 put("path", "devices:setViewer")
                                 put("args", JSONObject().apply {
                                     put("token", token)
-                                    put("deviceId", activeDeviceId)
+                                    put("deviceId", queriedId)
                                 })
                             }
                             val pingReq = Request.Builder()
@@ -472,7 +486,7 @@ class MockDeviceRepository(
                             put("path", "devices:getDeviceLatest")
                             put("args", JSONObject().apply {
                                 put("token", token)
-                                put("deviceId", activeDeviceId)
+                                put("deviceId", queriedId)
                             })
                         }
                         val req = Request.Builder()
@@ -510,7 +524,7 @@ class MockDeviceRepository(
 
                 // Update device in state:
                 _devices.value = _devices.value.map { device ->
-                    if (device.id == activeDeviceId) {
+                    if (device.id == queriedId) {
                         val online = when {
                             isDeviceOnline == true -> true
                             isDeviceOnline == false -> false
@@ -531,7 +545,7 @@ class MockDeviceRepository(
                             createEmptyHardwareStats()
                         }
                         device.copy(
-                            hardwareStats = stats,
+                            hardwareStats = device.gate(stats),
                             isOnline = online,
                             lastSeen = effectiveLastSeen
                         )
@@ -543,11 +557,11 @@ class MockDeviceRepository(
                 // Evaluate hardware thresholds in real-time and fire heads-up notifications
                 if (liveStats != null && context != null && userPreferencesRepository != null) {
                     try {
-                        val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(activeDeviceId).first()
-                        val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(activeDeviceId).first()
-                        val ramLimit = userPreferencesRepository.getDeviceRamThreshold(activeDeviceId).first()
+                        val cpuLimit = userPreferencesRepository.getDeviceCpuThreshold(queriedId).first()
+                        val gpuLimit = userPreferencesRepository.getDeviceGpuThreshold(queriedId).first()
+                        val ramLimit = userPreferencesRepository.getDeviceRamThreshold(queriedId).first()
 
-                        val currentDevice = _devices.value.find { it.id == activeDeviceId }
+                        val currentDevice = _devices.value.find { it.id == queriedId }
                         val devName = currentDevice?.name ?: "Primary PC"
 
                         // 1. RAM Usage Evaluation
@@ -556,7 +570,7 @@ class MockDeviceRepository(
                             lastRamAlertMs = now
                             NotificationHelper.showHardwareAlert(
                                 context = context,
-                                deviceId = activeDeviceId,
+                                deviceId = queriedId,
                                 title = "$devName · RAM High",
                                 message = "RAM usage is ${ramPct.toInt()}% (exceeds ${ramLimit.toInt()}% threshold)"
                             )
@@ -569,7 +583,7 @@ class MockDeviceRepository(
                             lastCpuAlertMs = now
                             NotificationHelper.showHardwareAlert(
                                 context = context,
-                                deviceId = activeDeviceId,
+                                deviceId = queriedId,
                                 title = "$devName · CPU High",
                                 message = "CPU package temperature is ${cpuTemp.toInt()}°C (exceeds ${cpuLimit.toInt()}°C threshold)"
                             )
@@ -582,7 +596,7 @@ class MockDeviceRepository(
                             lastGpuAlertMs = now
                             NotificationHelper.showHardwareAlert(
                                 context = context,
-                                deviceId = activeDeviceId,
+                                deviceId = queriedId,
                                 title = "$devName · GPU High",
                                 message = "GPU temperature is ${gpuTemp.toInt()}°C (exceeds ${gpuLimit.toInt()}°C threshold)"
                             )
@@ -632,7 +646,11 @@ class MockDeviceRepository(
             emptyList()
         }
 
-        val coreTemps = List(coreUtils.size) { cpuTemp }
+        // Per-logical-processor temperatures, only from chips with per-core sensors (agent 0.2.3+).
+        val coreTempsArr = cpuObj?.optJSONArray("coreTemps")
+        val coreTemps = if (coreTempsArr != null) {
+            (0 until coreTempsArr.length()).map { coreTempsArr.optDouble(it, 0.0).toFloat() }
+        } else emptyList()
 
         val cpu = CpuStats(
             coreTemperatures = coreTemps,
@@ -725,7 +743,7 @@ class MockDeviceRepository(
         val uptimeSec = value.optLong("uptimeSec", 0L)
         val usage = UsageStats(
             uptimeSeconds = uptimeSec,
-            activeTimeTodaySeconds = uptimeSec,
+            activeTimeTodaySeconds = 0L,
             bootHistory = if (uptimeSec > 0L) {
                 listOf(BootEvent(BootEventType.BOOT, System.currentTimeMillis() - uptimeSec * 1000L))
             } else emptyList()

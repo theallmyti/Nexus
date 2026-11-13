@@ -92,6 +92,7 @@ export const pushLatest = mutation({
     docker: v.optional(v.object({ running: v.number(), stopped: v.number(), errored: v.number() })),
     perCoreUtil: v.optional(v.array(v.number())),
     clocks: v.optional(v.array(v.number())),
+    coreTemps: v.optional(v.array(v.number())), // °C per physical core, only on chips with per-core sensors
     ram: v.optional(ramDetail),
     topProcs: v.optional(v.array(topProc)),
     disks: v.optional(v.array(driveLive)),
@@ -127,6 +128,9 @@ export const pushLatest = mutation({
     }
     if (args.clocks && (args.clocks.length > 512 || args.clocks.some((c) => c < 0 || c > 20_000))) {
       throw new ConvexError("clocks value out of range");
+    }
+    if (args.coreTemps && (args.coreTemps.length > 256 || args.coreTemps.some((t) => t < -40 || t > 150))) {
+      throw new ConvexError("coreTemps value out of range");
     }
     if (args.disks && (args.disks.length > 64 || args.disks.some((d) => d.freeGB < 0 || d.freeGB > d.totalGB))) {
       throw new ConvexError("disk value out of range");
@@ -173,7 +177,7 @@ export const pushLatest = mutation({
       // Server time: the site shows "last update" from it, and a PC's clock may be wrong.
       // args.ts (the PC's time) is kept in the arguments for older agents.
       ts: Date.now(),
-      cpu: { util: args.cpuUtil, packageTemp: args.cpuTemp, perCoreUtil: args.perCoreUtil, clocks: args.clocks },
+      cpu: { util: args.cpuUtil, packageTemp: args.cpuTemp, perCoreUtil: args.perCoreUtil, clocks: args.clocks, coreTemps: args.coreTemps },
       ram: { usedPct: args.ramUsedPct, detail: args.ram, topProcs: args.topProcs },
       disks: args.disks ?? existing?.disks,
       uptimeSec: args.uptimeSec ?? existing?.uptimeSec,

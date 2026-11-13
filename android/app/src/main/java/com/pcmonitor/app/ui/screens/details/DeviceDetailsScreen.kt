@@ -56,6 +56,14 @@ import com.pcmonitor.app.data.model.CpuStats
 import com.pcmonitor.app.data.model.Device
 import com.pcmonitor.app.data.model.GpuStats
 import com.pcmonitor.app.data.model.RamStats
+import com.pcmonitor.app.data.model.formatGb
+import com.pcmonitor.app.notification.AlertSnooze
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
 import com.pcmonitor.app.ui.components.PixelComputer
 import com.pcmonitor.app.ui.components.RetroProgressBar
 import com.pcmonitor.app.ui.components.RetroSparkline
@@ -138,7 +146,10 @@ fun DeviceDetailsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
@@ -152,7 +163,9 @@ fun DeviceDetailsScreen(
                         fontFamily = PixelFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
-                        color = ArcadeYellow
+                        color = ArcadeYellow,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -171,13 +184,7 @@ fun DeviceDetailsScreen(
                             tint = ArcadeYellow
                         )
                     }
-                    IconButton(onClick = { showUnpairDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Unpair Device",
-                            tint = OfflineRed
-                        )
-                    }
+                    SnoozeButton(deviceId = device.id)
                 }
             }
 
@@ -219,14 +226,6 @@ fun DeviceDetailsScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = device.name,
-                                fontFamily = ReadableFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = CreamText
-                            )
-
-                            Text(
                                 text = "${device.os} · ${device.type.label}",
                                 fontFamily = ReadableFontFamily,
                                 fontSize = 12.sp,
@@ -257,8 +256,8 @@ fun DeviceDetailsScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = if (device.isOnline) "Online" else "Offline",
-                                    fontFamily = PixelFontFamily,
-                                    fontSize = 8.sp,
+                                    fontFamily = ReadableFontFamily,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (device.isOnline) Color(0xFF2E6930) else Color(0xFFA94442)
                                 )
@@ -266,21 +265,13 @@ fun DeviceDetailsScreen(
 
                             Spacer(modifier = Modifier.height(2.dp))
 
+                            // One line of context: uptime while online, last-seen while offline.
                             Text(
-                                text = formatLastSeen(device.lastSeen, device.isOnline),
+                                text = if (device.isOnline) {
+                                    if (device.hardwareStats.usage.uptimeSeconds > 0) "Up ${device.hardwareStats.usage.uptimeFormatted}" else ""
+                                } else formatLastSeen(device.lastSeen, false),
                                 fontFamily = ReadableFontFamily,
-                                fontSize = 11.sp,
-                                color = CreamTextSecondary
-                            )
-
-                            Text(
-                                text = if (device.isOnline && device.hardwareStats.usage.uptimeSeconds > 0) {
-                                    "Uptime: ${device.hardwareStats.usage.uptimeFormatted}"
-                                } else {
-                                    "Uptime: Offline"
-                                },
-                                fontFamily = ReadableFontFamily,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = CreamTextSecondary
                             )
                         }
@@ -295,7 +286,13 @@ fun DeviceDetailsScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        DetailTab.entries.forEach { tab ->
+                        DetailTab.entries.filter { tab ->
+                            when (tab) {
+                                DetailTab.GPU -> device.hardwareStats.gpu != null || device.hasGpu == true
+                                DetailTab.BATTERY -> device.hardwareStats.battery != null || device.hasBattery == true
+                                else -> true
+                            }
+                        }.forEach { tab ->
                             val isSelected = viewModel.selectedTab == tab
                             Box(
                                 modifier = Modifier
@@ -307,12 +304,14 @@ fun DeviceDetailsScreen(
                                         RoundedCornerShape(6.dp)
                                     )
                                     .clickable { viewModel.onTabSelected(tab) }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .heightIn(min = 44.dp)
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = tab.label,
                                     fontFamily = PixelFontFamily,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) TextWhite else CreamText
                                 )
@@ -478,7 +477,7 @@ private fun OverviewSection(
     // 1. CPU Temperature Card (Cream card with brown border & green sparkline)
     val cpuTemp = stats.cpu.averageTemperature
     val cpuStr = if (isOnline && cpuTemp > 0f) {
-        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${cpuTemp.toInt()}°C (avg)"
+        if (useFahrenheit) "${(cpuTemp * 9f / 5f + 32).toInt()}°F" else "${cpuTemp.toInt()}°C"
     } else "--"
 
     LaunchedEffect(cpuTemp, isOnline) {
@@ -501,7 +500,7 @@ private fun OverviewSection(
     if (stats.gpu != null || !isOnline) {
         val gpuTemp = stats.gpu?.temperature ?: 0f
         val gpuStr = if (isOnline && gpuTemp > 0f) {
-            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F (avg)" else "${gpuTemp.toInt()}°C (avg)"
+            if (useFahrenheit) "${(gpuTemp * 9f / 5f + 32).toInt()}°F" else "${gpuTemp.toInt()}°C"
         } else "--"
 
         LaunchedEffect(gpuTemp, isOnline) {
@@ -523,7 +522,7 @@ private fun OverviewSection(
     // 3. RAM Usage Card
     val ramPercent = if (isOnline) stats.ram.usagePercent.toInt() else 0
     val ramMainValue = if (isOnline && ramPercent > 0) "$ramPercent%" else "--"
-    val ramSubValue = if (isOnline && stats.ram.totalMb > 0) "${stats.ram.usedMb / 1024} GB / ${stats.ram.totalMb / 1024} GB" else "Device offline"
+    val ramSubValue = if (isOnline && stats.ram.totalMb > 0) "${formatGb(stats.ram.usedMb)} / ${formatGb(stats.ram.totalMb)}" else "Device offline"
     val ramProgress = if (isOnline) stats.ram.usagePercent / 100f else 0f
     CreamBarMetricCard(
         icon = Icons.Default.Memory,
@@ -544,10 +543,11 @@ private fun OverviewSection(
         val bProg = if (isOnline) stats.battery.percentage / 100f else 0f
         CreamBarMetricCard(
             icon = Icons.Default.BatteryFull,
-            title = "Battery (Laptop)",
+            title = "Battery",
             mainValue = bPct,
             subValue = bSub,
-            progress = bProg
+            progress = bProg,
+            higherIsBetter = true
         )
         Spacer(modifier = Modifier.height(12.dp))
     }
@@ -659,7 +659,8 @@ private fun CreamBarMetricCard(
     title: String,
     mainValue: String,
     subValue: String,
-    progress: Float
+    progress: Float,
+    higherIsBetter: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -725,7 +726,8 @@ private fun CreamBarMetricCard(
                 color = CreamGreenChart,
                 trackColor = Color(0xFFE5DAC0),
                 modifier = Modifier.fillMaxWidth(),
-                height = 10.dp
+                height = 10.dp,
+                higherIsBetter = higherIsBetter
             )
         }
     }
@@ -733,69 +735,33 @@ private fun CreamBarMetricCard(
 
 @Composable
 private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean) {
-    var showThreads by remember { mutableStateOf(false) }
-
     Column {
         Text(
-            text = "CPU Metrics & Core Utilization",
+            text = "CPU",
             fontFamily = PixelFontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             color = CreamText
         )
-        Spacer(modifier = Modifier.height(4.dp))
-        val coreCount = cpu.coreUtilizations.size
-        val threadCount = cpu.threadUtilizations.size
-        val archSubtitle = if (coreCount > 0 && threadCount > 0) {
-            "Multi-Core Architecture · $coreCount Cores / $threadCount Threads"
-        } else if (coreCount > 0) {
-            "Multi-Core Architecture · $coreCount Cores"
-        } else {
-            "Multi-Core Architecture"
-        }
-        Text(
-            text = archSubtitle,
-            fontFamily = ReadableFontFamily,
-            fontWeight = FontWeight.Medium,
-            fontSize = 12.sp,
-            color = CreamTextSecondary
-        )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Grid of Key Stats
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val pkgTempStr = if (isOnline && cpu.packageTemperature > 0f) {
                 if (useFahrenheit) "${(cpu.packageTemperature * 9f / 5f + 32).toInt()}°F" else "${cpu.packageTemperature.toInt()}°C"
             } else "--"
-
+            val loadStr = if (isOnline) "${cpu.totalUtilization.toInt()}%" else "--"
             val clockStr = if (isOnline && cpu.clockSpeedMhz > 0f) {
-                "${(cpu.clockSpeedMhz / 1000f).let { "%.1f".format(it) }} GHz"
+                String.format(java.util.Locale.US, "%.1f GHz", cpu.clockSpeedMhz / 1000f)
             } else "--"
-
-            val powerStr = if (isOnline && cpu.powerWatts > 0f) {
-                "${cpu.powerWatts.toInt()} W"
-            } else "--"
-
-            CreamStatPill(
-                label = "Package Temp",
-                value = pkgTempStr,
-                modifier = Modifier.weight(1f)
-            )
-            CreamStatPill(
-                label = "Clock Speed",
-                value = clockStr,
-                modifier = Modifier.weight(1f)
-            )
-            CreamStatPill(
-                label = "Power",
-                value = powerStr,
-                modifier = Modifier.weight(1f)
-            )
+            CreamStatPill(label = "Temperature", value = pkgTempStr, modifier = Modifier.weight(1f))
+            CreamStatPill(label = "Load", value = loadStr, modifier = Modifier.weight(1f))
+            CreamStatPill(label = "Clock", value = clockStr, modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        if (!isOnline) {
+        val threads = cpu.threadUtilizations
+        if (!isOnline || threads.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -806,139 +772,78 @@ private fun CpuSection(cpu: CpuStats, isOnline: Boolean, useFahrenheit: Boolean)
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "PC is offline · No live core metrics available",
+                    text = if (!isOnline) "Offline. Load per processor shows when it's back." else "Waiting for per-processor load…",
                     fontFamily = ReadableFontFamily,
                     fontSize = 13.sp,
                     color = CreamTextSecondary
                 )
             }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Per-core temperatures line up with the load rows when the chip reports them.
+            val temps = cpu.coreTemperatures.takeIf { it.size == threads.size }
+            Text(
+                text = if (temps != null) "Load and temperature per logical processor (${threads.size})"
+                else "Load per logical processor (${threads.size})",
+                fontFamily = ReadableFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = CreamTextSecondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            if (temps == null) {
                 Text(
-                    text = if (showThreads) "Logical Threads ($threadCount Threads)" else "Physical Cores ($coreCount Cores)",
+                    text = "This chip reports one temperature for the whole CPU, shown above.",
                     fontFamily = ReadableFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = 11.sp,
                     color = CreamTextSecondary
                 )
-
-                Text(
-                    text = if (showThreads) "Show $coreCount Cores" else "Show $threadCount Threads",
-                    fontFamily = ReadableFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = PixelGreen,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { showThreads = !showThreads }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
             }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (!showThreads) {
-                // Render Physical Cores
-                cpu.coreUtilizations.forEachIndexed { index, util ->
-                    val label = "Core $index"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+            threads.forEachIndexed { index, util ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "CPU $index",
+                        fontFamily = PixelFontFamily,
+                        fontSize = 10.sp,
+                        color = CreamText,
+                        maxLines = 1,
+                        modifier = Modifier.width(64.dp)
+                    )
+                    if (temps != null) {
+                        val t = temps[index]
                         Text(
-                            text = label,
+                            text = if (useFahrenheit) "${(t * 9f / 5f + 32).toInt()}°F" else "${t.toInt()}°C",
                             fontFamily = PixelFontFamily,
                             fontSize = 10.sp,
-                            color = CreamText,
+                            color = if (t >= 85f) Color(0xFFB91C1C) else CreamGreenChart,
                             maxLines = 1,
-                            modifier = Modifier.width(92.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Text(
-                            text = "${cpu.packageTemperature.toInt()}°C",
-                            fontFamily = PixelFontFamily,
-                            fontSize = 10.sp,
-                            color = CreamGreenChart,
-                            modifier = Modifier.width(44.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        RetroProgressBar(
-                            progress = (util / 100f).coerceIn(0f, 1f),
-                            color = CreamGreenAccent,
-                            trackColor = Color(0xFFE5DAC0),
-                            modifier = Modifier.weight(1f),
-                            height = 8.dp
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Text(
-                            text = "${util.toInt()}%",
-                            fontFamily = PixelFontFamily,
-                            fontSize = 10.sp,
-                            color = CreamTextSecondary,
-                            modifier = Modifier.width(36.dp)
+                            softWrap = false,
+                            modifier = Modifier.width(52.dp)
                         )
                     }
-                }
-            } else {
-                // Render 20 Logical Threads
-                val threads = if (cpu.threadUtilizations.isNotEmpty()) cpu.threadUtilizations else cpu.coreUtilizations
-                threads.forEachIndexed { index, util ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Thread $index",
-                            fontFamily = PixelFontFamily,
-                            fontSize = 10.sp,
-                            color = CreamText,
-                            maxLines = 1,
-                            modifier = Modifier.width(92.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Text(
-                            text = "${cpu.packageTemperature.toInt()}°C",
-                            fontFamily = PixelFontFamily,
-                            fontSize = 10.sp,
-                            color = CreamGreenChart,
-                            modifier = Modifier.width(44.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        RetroProgressBar(
-                            progress = (util / 100f).coerceIn(0f, 1f),
-                            color = CreamGreenAccent,
-                            trackColor = Color(0xFFE5DAC0),
-                            modifier = Modifier.weight(1f),
-                            height = 8.dp
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Text(
-                            text = "${util.toInt()}%",
-                            fontFamily = PixelFontFamily,
-                            fontSize = 10.sp,
-                            color = CreamTextSecondary,
-                            modifier = Modifier.width(36.dp)
-                        )
-                    }
+                    RetroProgressBar(
+                        progress = (util / 100f).coerceIn(0f, 1f),
+                        color = CreamGreenAccent,
+                        trackColor = Color(0xFFE5DAC0),
+                        modifier = Modifier.weight(1f),
+                        height = 8.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${util.toInt()}%",
+                        fontFamily = PixelFontFamily,
+                        fontSize = 10.sp,
+                        color = CreamTextSecondary,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.width(40.dp)
+                    )
                 }
             }
         }
@@ -972,7 +877,7 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
             if (useFahrenheit) "${(gpu.temperature * 9f / 5f + 32).toInt()}°F" else "${gpu.temperature.toInt()}°C"
         } else "--"
         val utilStr = if (isOnline) "${gpu.utilization.toInt()}%" else "--"
-        val fanStr = if (isOnline) "${gpu.fanSpeedPercent.toInt()}%" else "--"
+        val fanStr = if (isOnline && gpu.fanSpeedPercent > 0f) "${gpu.fanSpeedPercent.toInt()}%" else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(
@@ -996,7 +901,7 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
 
         val clockStr = if (isOnline && gpu.clockSpeedMhz > 0f) "${gpu.clockSpeedMhz.toInt()} MHz" else "--"
         val powerStr = if (isOnline && gpu.powerWatts > 0f) "${gpu.powerWatts.toInt()} W" else "--"
-        val vramStr = if (isOnline && gpu.vramUsedMb > 0) "${gpu.vramUsedMb / 1024} GB" else "--"
+        val vramStr = if (isOnline && gpu.vramTotalMb > 0) formatGb(gpu.vramUsedMb) else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(
@@ -1019,7 +924,7 @@ private fun GpuSection(gpu: GpuStats?, isOnline: Boolean, useFahrenheit: Boolean
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = if (isOnline) "VRAM Usage (${gpu.vramUsedMb} MB / ${gpu.vramTotalMb} MB)" else "VRAM Usage (Offline)",
+            text = if (isOnline) "VRAM Usage (${formatGb(gpu.vramUsedMb)} / ${formatGb(gpu.vramTotalMb)})" else "VRAM Usage (Offline)",
             fontFamily = ReadableFontFamily,
             fontSize = 12.sp,
             color = CreamTextSecondary
@@ -1048,9 +953,9 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
         )
         Spacer(modifier = Modifier.height(10.dp))
 
-        val usedStr = if (isOnline && ram.usedMb > 0) "${ram.usedMb / 1024} GB" else "--"
-        val freeStr = if (isOnline && ram.freeMb > 0) "${ram.freeMb / 1024} GB" else "--"
-        val cachedStr = if (isOnline && ram.cachedMb > 0) "${ram.cachedMb / 1024} GB" else "--"
+        val usedStr = if (isOnline && ram.usedMb > 0) formatGb(ram.usedMb) else "--"
+        val freeStr = if (isOnline && ram.freeMb > 0) formatGb(ram.freeMb) else "--"
+        val cachedStr = if (isOnline && ram.cachedMb > 0) formatGb(ram.cachedMb) else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(label = "Used", value = usedStr, modifier = Modifier.weight(1f))
@@ -1099,19 +1004,22 @@ private fun RamSection(ram: RamStats, isOnline: Boolean) {
                         text = proc.name,
                         fontFamily = ReadableFontFamily,
                         fontSize = 13.sp,
-                        color = CreamText
+                        color = CreamText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
 
                     Row {
                         Text(
-                            text = "${proc.memoryMb} MB",
+                            text = if (proc.memoryMb >= 1024) formatGb(proc.memoryMb) else "${proc.memoryMb} MB",
                             fontFamily = PixelFontFamily,
                             fontSize = 11.sp,
                             color = CreamGreenChart
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "${proc.cpuPercent}% CPU",
+                            text = String.format(java.util.Locale.US, "%.1f%% CPU", proc.cpuPercent),
                             fontFamily = PixelFontFamily,
                             fontSize = 11.sp,
                             color = CreamTextSecondary
@@ -1151,9 +1059,9 @@ private fun BatterySection(device: Device) {
 
         val pctStr = if (isOnline && b != null) "${b.percentage}%" else "--"
         val healthStr = if (isOnline && b != null) "${b.healthPercent}%" else "--"
-        val cyclesStr = if (isOnline && b != null) "${b.chargeCycles}" else "--"
+        val cyclesStr = if (isOnline && b != null && b.chargeCycles > 0) "${b.chargeCycles}" else "--"
         val stateStr = if (isOnline && b != null) (if (b.isCharging) "Charging" else "Discharging") else "Offline"
-        val rateStr = if (isOnline && b != null) "${b.powerRateWatts} W" else "--"
+        val rateStr = if (isOnline && b != null && b.powerRateWatts != 0f) String.format(java.util.Locale.US, "%.1f W", kotlin.math.abs(b.powerRateWatts)) else "--"
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CreamStatPill(label = "Percentage", value = pctStr, modifier = Modifier.weight(1f))
@@ -1201,21 +1109,66 @@ private fun CreamStatPill(label: String, value: String, modifier: Modifier = Mod
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            var valueSize by remember(value) { mutableStateOf(13f) }
             Text(
                 text = value,
                 fontFamily = PixelFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = CreamText
+                fontSize = valueSize.sp,
+                color = CreamText,
+                maxLines = 1,
+                softWrap = false,
+                onTextLayout = { if (it.didOverflowWidth && valueSize > 7f) valueSize -= 1f }
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,
                 fontFamily = ReadableFontFamily,
                 fontSize = 10.sp,
-                color = CreamTextSecondary
+                color = CreamTextSecondary,
+                maxLines = 1
             )
         }
     }
 }
 
+/** Bell in the top bar: silence this device's notifications for a while (alerts still get recorded). */
+@Composable
+private fun SnoozeButton(deviceId: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    var until by remember(deviceId) { mutableStateOf(AlertSnooze.snoozedUntil(context, deviceId)) }
+    val snoozed = until > System.currentTimeMillis()
+
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(
+                imageVector = if (snoozed) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                contentDescription = if (snoozed) "Alerts snoozed" else "Snooze alerts",
+                tint = if (snoozed) CreamTextSecondary else ArcadeYellow
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (snoozed) {
+                val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(until))
+                DropdownMenuItem(
+                    text = { Text("Snoozed until $time · Turn back on") },
+                    onClick = { AlertSnooze.unsnooze(context, deviceId); until = 0L; open = false }
+                )
+            }
+            listOf(
+                "Snooze 1 hour" to { System.currentTimeMillis() + 3_600_000L },
+                "Snooze 8 hours" to { System.currentTimeMillis() + 8 * 3_600_000L },
+                "Snooze until 8 AM" to { AlertSnooze.nextMorning() }
+            ).forEach { (label, untilFn) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        val t = untilFn()
+                        AlertSnooze.snooze(context, deviceId, t); until = t; open = false
+                    }
+                )
+            }
+        }
+    }
+}

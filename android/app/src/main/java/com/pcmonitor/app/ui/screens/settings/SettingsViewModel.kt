@@ -68,6 +68,31 @@ class SettingsViewModel(
         }
     }
 
+    // --- Profile picture ---
+    var avatarBusy by mutableStateOf(false)
+        private set
+    var avatarError by mutableStateOf<String?>(null)
+        private set
+
+    // Load the profile once at start so a picture set on another phone shows up here too.
+    init {
+        viewModelScope.launch { authRepository.fetchProfile() }
+    }
+
+    fun setPixelAvatar(id: String?) = avatarAction { authRepository.setPixelAvatar(id) }
+
+    fun uploadAvatar(jpeg: ByteArray) = avatarAction { authRepository.uploadAvatarPhoto(jpeg) }
+
+    private fun avatarAction(call: suspend () -> Result<*>) {
+        if (avatarBusy) return
+        avatarBusy = true
+        avatarError = null
+        viewModelScope.launch {
+            call().onFailure { avatarError = it.message }
+            avatarBusy = false
+        }
+    }
+
     // --- Profile dialog (name card) ---
     var profile by mutableStateOf<UserProfile?>(null)
         private set

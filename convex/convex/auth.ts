@@ -174,7 +174,61 @@ export const profile = query({
       .query("devices")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
-    return { email: user.email, name: user.name ?? null, createdAt: user.createdAt, deviceCount: devices.length };
+    const avatarUrl = user.avatarFileId ? await ctx.storage.getUrl(user.avatarFileId) : null;
+    return {
+      email: user.email,
+      name: user.name ?? null,
+      createdAt: user.createdAt,
+      deviceCount: devices.length,
+      avatar: user.avatar ?? null,
+      avatarUrl,
+    };
+  },
+});
+
+// Built-in pixel characters the app can draw (keep in sync with the app's PixelAvatars).
+const PIXEL_AVATARS = ["explorer", "ranger", "coder", "gamer", "cat", "fox", "owl", "tree", "mountain"];
+const MAX_AVATAR_BYTES = 512 * 1024;
+
+// Step 1 of a photo upload: a one-time URL the app POSTs the (already resized) image to.
+export const avatarUploadUrl = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    await requireUserAndTouch(ctx, args.token);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+// Step 2: pick a pixel character, attach the uploaded photo, or clear the picture.
+export const setAvatar = mutation({
+  args: {
+    token: v.string(),
+    pixel: v.optional(v.string()),
+    fileId: v.optional(v.id("_storage")),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserAndTouch(ctx, args.token);
+    let avatar: string | undefined;
+    let avatarFileId: typeof user.avatarFileId;
+    if (args.fileId) {
+      const meta = await ctx.db.system.get(args.fileId);
+      if (!meta) throw new ConvexError("Upload not found. Try again.");
+      if (!meta.contentType?.startsWith("image/") || meta.size > MAX_AVATAR_BYTES) {
+        await ctx.storage.delete(args.fileId);
+        throw new ConvexError("Use an image under 512 KB.");
+      }
+      avatar = "photo";
+      avatarFileId = args.fileId;
+    } else if (args.pixel) {
+      if (!PIXEL_AVATARS.includes(args.pixel)) throw new ConvexError("Unknown avatar.");
+      avatar = `pixel:${args.pixel}`;
+    }
+    // Replace: the previous photo is no longer referenced, so remove it.
+    if (user.avatarFileId && user.avatarFileId !== avatarFileId) {
+      await ctx.storage.delete(user.avatarFileId);
+    }
+    await ctx.db.patch(user._id, { avatar, avatarFileId });
+    return { avatar: avatar ?? null, avatarUrl: avatarFileId ? await ctx.storage.getUrl(avatarFileId) : null };
   },
 });
 
@@ -242,6 +296,7 @@ export const deleteAccount = mutation({
       throw new ConvexError("Not authenticated.");
     }
     const userId = found.user._id;
+    if (found.user.avatarFileId) await ctx.storage.delete(found.user.avatarFileId);
 
     // 1. Delete all sessions for this user
     const userSessions = await ctx.db
