@@ -14,7 +14,7 @@
 ; removes PawnIO (silently if this installer added it, otherwise after asking), deletes all files.
 
 #define AppName "Nexus Agent"
-#define AppVersion "0.2.2"
+#define AppVersion "0.2.3"
 #define ServiceName "NexusAgent"
 ; The Convex URL is kept out of the repo: installer/convex-url.txt (git-ignored, one line).
 ; Test builds: ISCC /DChannel=dev reads installer/convex-url-dev.txt and adds "-dev" to the name.
