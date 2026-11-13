@@ -6,7 +6,7 @@ Production installer and hardened systemd service for the Nexus Hardware Monitor
 
 ```bash
 # Standalone run package
-sudo sh dist/nexus-0.2.4-linux-x86_64.run
+sudo sh dist/nexus-0.2.5-linux-x86_64.run
 # Or using install.sh directly
 sudo sh installer/linux/install.sh [path/to/nexus]
 ```
