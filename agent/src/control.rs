@@ -34,6 +34,13 @@ pub fn now_secs() -> u64 {
 
 pub const MAX_PAUSE_SECS: u64 = 24 * 60 * 60; // Max 24 hours pause policy
 
+/// End of a pause: the requested end, but never later than MAX_PAUSE_SECS after `written`
+/// (when control.json was last modified). No end time means the maximum.
+pub fn cap_pause_end(requested: Option<u64>, written: u64) -> u64 {
+    let latest = written.saturating_add(MAX_PAUSE_SECS);
+    requested.map_or(latest, |u| u.min(latest))
+}
+
 /// Read control.json. If a timed pause has expired, automatically clears the pause.
 pub fn read_control(data_dir: &Path) -> PauseState {
     let path = data_dir.join("control.json");
@@ -42,10 +49,23 @@ pub fn read_control(data_dir: &Path) -> PauseState {
         Err(_) => return PauseState::default(),
     };
 
-    let state: PauseState = match serde_json::from_str(&content) {
+    let mut state: PauseState = match serde_json::from_str(&content) {
         Ok(s) => s,
         Err(_) => return PauseState::default(),
     };
+
+    // control.json is writable by every local user (so the tray and `nexus pause` work without
+    // admin). Never trust its end time: a pause ends at most MAX_PAUSE_SECS after the file was
+    // last written, so a hand-edited "paused forever" can't silence monitoring indefinitely.
+    if state.paused {
+        let written = fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map_or_else(now_secs, |d| d.as_secs());
+        state.until = Some(cap_pause_end(state.until, written));
+        state.reason = state.reason.map(|r| r.chars().take(200).collect());
+    }
 
     if state.paused
         && let Some(until) = state.until
@@ -102,6 +122,17 @@ pub fn read_status(data_dir: &Path) -> Option<AgentStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hand_edited_pause_cannot_exceed_24_hours() {
+        let written = 1_000_000;
+        // "paused forever" (no end time) -> 24 h after the file was written
+        assert_eq!(cap_pause_end(None, written), written + MAX_PAUSE_SECS);
+        // an end date years away -> still 24 h
+        assert_eq!(cap_pause_end(Some(u64::MAX), written), written + MAX_PAUSE_SECS);
+        // a normal 1-hour pause is kept as is
+        assert_eq!(cap_pause_end(Some(written + 3600), written), written + 3600);
+    }
 
     #[test]
     fn test_pause_expiration() {
